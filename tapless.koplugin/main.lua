@@ -12,7 +12,7 @@ local replacement_path = plugin_dir .. "/virtualkeyboard.lua"
 local ok, replacement = pcall(dofile, replacement_path)
 if ok and replacement then
     package.loaded[virtualkeyboard_module] = replacement
-    logger.info("Tapless: VirtualKeyboard plugin implementation loaded")
+    logger.info("Tapless: thin VirtualKeyboard adapter loaded")
 
     -- InputText caches the keyboard class during its own module initialization.
     -- Re-run that binding so an early-loaded InputText also uses Tapless.

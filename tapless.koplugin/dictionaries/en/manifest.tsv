@@ -1,7 +1,13 @@
 # field	value
+format	1
 id	en
 name	EN
 language	en
+source_language	en
+data_language	en
+keyboard_layout	en_keyboard
+short_label	EN
+normalization_profile	latin-extended-v1
 version	2
 rows	99046
 data	words.buckets.tsv

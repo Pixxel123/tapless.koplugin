@@ -1,7 +1,13 @@
 # field	value
+format	1
 id	pl
 name	PL
 language	pl
+source_language	pl
+data_language	pl
+keyboard_layout	pl_keyboard
+short_label	PL
+normalization_profile	latin-extended-v1
 version	2
 rows	148823
 data	words.buckets.tsv
