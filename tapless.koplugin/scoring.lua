@@ -1,6 +1,7 @@
 local Scoring = {
     EDIT_DISTANCE_MAX = 2,
     SCORE_UNIT = 3000,
+    REPEAT_BONUS = 4500,
 }
 Scoring.__index = Scoring
 
@@ -77,7 +78,8 @@ function Scoring:editDistance(left, right, max_distance)
 end
 
 function Scoring:matchScore(candidate, trace_chars, next_positions,
-        allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers)
+        allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
+        observations)
     local trace_len = #trace_chars
     local trace_end = trace_len + 1
     local candidate_len = #candidate
@@ -86,11 +88,13 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
     local first_match
     local last_match
     local endpoint_mismatch = false
+    local matched_positions = {}
     local geometry_total = 0
     local geometry_measured = 0
 
     for i = 1, candidate_len do
-        local code = string.byte(candidate, i) - ASCII_A + 1
+        local byte = string.byte(candidate, i)
+        local code = byte - ASCII_A + 1
         local row = next_positions and next_positions[pos]
         local found = row and row[code] or nil
         if (not found or found == trace_end) and allow_endpoint_mismatch
@@ -98,9 +102,10 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
                 and trace_len > 0 then
             matched = matched + 1
             last_match = trace_len
+            matched_positions[i] = trace_len
             endpoint_mismatch = true
             if trace_letter_points and endpoint_pos and key_centers then
-                local target = key_centers[code]
+                local target = key_centers[byte]
                 if target then
                     local dx = endpoint_pos.x - target.x
                     local dy = endpoint_pos.y - target.y
@@ -116,11 +121,12 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
             break
         end
         matched = matched + 1
+        matched_positions[i] = found
         first_match = first_match or found
         last_match = found
         if trace_letter_points and key_centers then
             local point = trace_letter_points[found]
-            local target = key_centers[code]
+            local target = key_centers[byte]
             if point and target then
                 local dx = point.x - target.x
                 local dy = point.y - target.y
@@ -137,9 +143,25 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
     if matched < candidate_len then
         score = 1000 + (candidate_len - matched) * 20
     else
-        score = trace_len - candidate_len
-        score = score + ((first_match or 1) - 1) * 2
-        score = score + (trace_len - (last_match or trace_len)) * 2
+        local matched_trace_positions = {}
+        for _, position in ipairs(matched_positions) do
+            matched_trace_positions[position] = true
+        end
+        local function skippedWeight(from, to)
+            local total = 0
+            for position = from, to do
+                if not matched_trace_positions[position] then
+                    total = total
+                        + (observations and observations[position]
+                            and observations[position].intent or 1)
+                end
+            end
+            return total
+        end
+        score = skippedWeight(1, trace_len)
+        score = score + skippedWeight(1, (first_match or 1) - 1) * 2
+        score = score
+            + skippedWeight((last_match or trace_len) + 1, trace_len) * 2
         local first_code = string.byte(candidate, 1) - ASCII_A + 1
         local last_code = string.byte(candidate, candidate_len) - ASCII_A + 1
         if string.byte(trace_chars[1]) - ASCII_A + 1 ~= first_code then
@@ -158,7 +180,130 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
         score = score + math.min(4,
             math.floor(geometry_total * 2 / geometry_measured + 0.5))
     end
-    return score, endpoint_mismatch
+    return score, endpoint_mismatch, matched_positions
+end
+
+function Scoring:dynamicMatchScore(candidate, trace_chars,
+        allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
+        observations)
+    local trace_len = #trace_chars
+    local candidate_len = #candidate
+    if trace_len == 0 or candidate_len == 0 then
+        return 1000 + candidate_len * 20, false, {}
+    end
+
+    local weights = {}
+    local weight_prefix = { [0] = 0 }
+    for position = 1, trace_len do
+        weights[position] = observations and observations[position]
+            and observations[position].intent or 1
+        weight_prefix[position] = weight_prefix[position - 1]
+            + weights[position]
+    end
+    local function skippedWeight(from, to)
+        if from > to then
+            return 0
+        end
+        return weight_prefix[to] - weight_prefix[from - 1]
+    end
+
+    local infinity = 1000000
+    local previous = { [0] = 0 }
+    for trace_position = 1, trace_len do
+        previous[trace_position] = previous[trace_position - 1]
+            + weights[trace_position] * 3
+    end
+
+    local parents = {}
+    local final_matches = {}
+    for candidate_position = 1, candidate_len do
+        local current = { [0] = infinity }
+        local parent_row = {}
+        parents[candidate_position] = parent_row
+        local candidate_byte = string.byte(candidate, candidate_position)
+        local candidate_code = candidate_byte - ASCII_A + 1
+        for trace_position = 1, trace_len do
+            local skipped = current[trace_position - 1]
+                + weights[trace_position]
+            local trace_code = string.byte(trace_chars[trace_position])
+                - ASCII_A + 1
+            local endpoint_mismatch = allow_endpoint_mismatch
+                and candidate_position == candidate_len
+                and trace_position == trace_len
+                and trace_code ~= candidate_code
+            local matched = infinity
+            if trace_code == candidate_code or endpoint_mismatch then
+                matched = previous[trace_position - 1]
+                if matched < infinity and trace_letter_points and key_centers then
+                    local point = endpoint_mismatch and endpoint_pos
+                        or trace_letter_points[trace_position]
+                    local target = key_centers[candidate_byte]
+                    if point and target then
+                        local dx = point.x - target.x
+                        local dy = point.y - target.y
+                        local scale = math.max(1, target.size or 1)
+                        local normalized = math.min(2,
+                            math.sqrt(dx * dx + dy * dy) / scale)
+                        matched = matched
+                            + normalized * 2 / candidate_len
+                    end
+                end
+            end
+            if matched <= skipped then
+                current[trace_position] = matched
+                parent_row[trace_position] = true
+            else
+                current[trace_position] = skipped
+                parent_row[trace_position] = false
+            end
+            if candidate_position == candidate_len and matched < infinity then
+                final_matches[trace_position] = matched
+            end
+        end
+        previous = current
+    end
+
+    local best_score = infinity
+    local best_end
+    for trace_position, match_score in pairs(final_matches) do
+        local score = match_score
+            + skippedWeight(trace_position + 1, trace_len) * 3
+        if score < best_score then
+            best_score = score
+            best_end = trace_position
+        end
+    end
+    if not best_end then
+        return 1000 + candidate_len * 20, false, {}
+    end
+
+    local matched_positions = {}
+    local candidate_position = candidate_len
+    local trace_position = best_end
+    while candidate_position > 0 and trace_position > 0 do
+        if parents[candidate_position][trace_position] then
+            matched_positions[candidate_position] = trace_position
+            candidate_position = candidate_position - 1
+        end
+        trace_position = trace_position - 1
+    end
+    if candidate_position > 0 then
+        return 1000 + candidate_position * 20, false, matched_positions
+    end
+
+    local first_code = string.byte(candidate, 1) - ASCII_A + 1
+    local last_code = string.byte(candidate, candidate_len) - ASCII_A + 1
+    local endpoint_mismatch = string.byte(trace_chars[best_end])
+        - ASCII_A + 1 ~= last_code
+    if string.byte(trace_chars[1]) - ASCII_A + 1 ~= first_code then
+        best_score = best_score + 6
+    end
+    if endpoint_mismatch then
+        best_score = best_score + 5
+    elseif string.byte(trace_chars[trace_len]) - ASCII_A + 1 ~= last_code then
+        best_score = best_score + 4
+    end
+    return best_score, endpoint_mismatch, matched_positions
 end
 
 function Scoring:shortWordEndpointScore(trace, candidate)
@@ -195,17 +340,9 @@ function Scoring:shortWordEndpointScore(trace, candidate)
         math.floor(#trace / 2) + missing * 3 + trailing * 2 - 2)
 end
 
-function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
-        trace_info, key_centers, allow_endpoint_mismatch, context_bonus)
-    local candidate = entry.signature
-    local score = self:matchScore(
-        candidate,
-        trace_chars,
-        next_positions,
-        allow_endpoint_mismatch,
-        trace_info and trace_info.letter_points,
-        trace_info and trace_info.endpoint_pos,
-        key_centers)
+function Scoring:finishEntryScore(signature, entry, score, matched_positions,
+        trace_info, context_bonus)
+    local candidate = entry.gesture_signature or entry.signature
     local endpoint_score = self:shortWordEndpointScore(signature, candidate)
     if endpoint_score and (#candidate <= 3 or (entry.freq or 0) >= 6500) then
         score = math.min(score, math.max(endpoint_score, score - 1))
@@ -217,12 +354,57 @@ function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
             score = math.min(score, edit_score + math.floor(#signature / 2))
         end
     end
+    local repeat_bonus = 0
+    if entry.repeat_positions and trace_info and trace_info.observations then
+        for candidate_position, repeat_count in pairs(entry.repeat_positions) do
+            local trace_position = matched_positions[candidate_position]
+            local observation = trace_position
+                and trace_info.observations[trace_position]
+            if observation then
+                repeat_bonus = repeat_bonus
+                    + (observation.repeat_confidence or 0)
+                        * math.min(2, repeat_count)
+            end
+        end
+    end
     return score,
         score * self.SCORE_UNIT - (entry.freq or 0) - (context_bonus or 0)
+            - math.floor(repeat_bonus * self.REPEAT_BONUS)
+end
+
+function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
+        trace_info, key_centers, allow_endpoint_mismatch, context_bonus)
+    local candidate = entry.gesture_signature or entry.signature
+    local score, _, matched_positions = self:matchScore(
+        candidate,
+        trace_chars,
+        next_positions,
+        allow_endpoint_mismatch,
+        trace_info and trace_info.letter_points,
+        trace_info and trace_info.endpoint_pos,
+        key_centers,
+        trace_info and trace_info.observations)
+    return self:finishEntryScore(signature, entry, score, matched_positions,
+        trace_info, context_bonus)
+end
+
+function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
+        key_centers, allow_endpoint_mismatch, context_bonus)
+    local candidate = entry.gesture_signature or entry.signature
+    local score, _, matched_positions = self:dynamicMatchScore(
+        candidate,
+        trace_chars,
+        allow_endpoint_mismatch,
+        trace_info and trace_info.letter_points,
+        trace_info and trace_info.endpoint_pos,
+        key_centers,
+        trace_info and trace_info.observations)
+    return self:finishEntryScore(signature, entry, score, matched_positions,
+        trace_info, context_bonus)
 end
 
 function Scoring:addCandidate(results, seen, entry, spatial_score,
-        ranked_score, limit)
+        ranked_score, limit, metadata)
     if seen[entry.word] then
         return
     end
@@ -230,8 +412,11 @@ function Scoring:addCandidate(results, seen, entry, spatial_score,
     local candidate = {
         word = entry.word,
         signature = entry.signature,
+        gesture_signature = entry.gesture_signature or entry.signature,
         spatial_score = spatial_score,
         ranked_score = ranked_score,
+        metadata = metadata,
+        personal = entry.personal == true,
     }
     local inserted = false
     for i = 1, #results do
@@ -266,6 +451,7 @@ function Scoring:warm()
         local trace_chars, next_positions = self:buildNextPositions(sample.trace)
         for _, candidate in ipairs(sample.candidates) do
             self:matchScore(candidate, trace_chars, next_positions, false)
+            self:dynamicMatchScore(candidate, trace_chars, false)
             self:shortWordEndpointScore(sample.trace, candidate)
             self:editDistance(sample.trace, candidate, self.EDIT_DISTANCE_MAX)
         end

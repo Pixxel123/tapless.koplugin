@@ -6,6 +6,7 @@ function InputSession:new()
         candidates = nil,
         last_insert = nil,
         debug_signature = nil,
+        personal_offer = nil,
     }, self)
 end
 
@@ -17,6 +18,20 @@ function InputSession:getLastInsert()
     return self.last_insert
 end
 
+function InputSession:getPersonalOffer()
+    return self.personal_offer
+end
+
+function InputSession:setPersonalOffer(offer)
+    self.personal_offer = offer
+end
+
+function InputSession:clearPersonalOffer()
+    local had_offer = self.personal_offer ~= nil
+    self.personal_offer = nil
+    return had_offer
+end
+
 function InputSession:hasCandidateState()
     return self.candidates ~= nil or self.debug_signature ~= nil
 end
@@ -24,6 +39,7 @@ end
 function InputSession:clear(keep_debug)
     self.candidates = nil
     self.last_insert = nil
+    self.personal_offer = nil
     if not keep_debug then
         self.debug_signature = nil
     end
@@ -39,13 +55,19 @@ function InputSession:recordShortSignature(signature)
 end
 
 function InputSession:recordInsert(signature, candidates, previous_word)
-    local inserted = candidates[1].word .. " "
+    if not candidates or #candidates == 0 then
+        return
+    end
+    local output_word = candidates[1].output_word or candidates[1].word
+    local inserted = output_word .. " "
     self.candidates = candidates
+    self.personal_offer = nil
     self.debug_signature = signature
     self.last_insert = {
         text = inserted,
         signature = signature,
         word = candidates[1].word,
+        output_word = output_word,
         previous_word = previous_word,
     }
     return inserted
@@ -72,7 +94,7 @@ function InputSession:selection(candidate)
     return {
         candidate = candidate,
         pending = self.last_insert,
-        replacement = candidate.word .. " ",
+        replacement = (candidate.output_word or candidate.word) .. " ",
         delete_text = self.last_insert.text,
     }
 end

@@ -1,11 +1,19 @@
 local CandidateRow = {}
 
-local function slotText(index, candidates, dictionary_label)
+local function slotText(index, candidates, dictionary_label, personal_offer)
     if index == 1 then
         return dictionary_label
     end
+    if personal_offer then
+        if index == 2 then
+            return personal_offer.word
+        elseif index == 3 then
+            return personal_offer.added and "✓" or "+"
+        end
+        return " "
+    end
     local candidate = candidates[index - 1]
-    return candidate and candidate.word or " "
+    return candidate and (candidate.output_word or candidate.word) or " "
 end
 
 function CandidateRow:create(options)
@@ -21,7 +29,8 @@ function CandidateRow:create(options)
             - 2 * options.padding) / slot_count)
 
     for index = 1, slot_count do
-        local word = slotText(index, candidates, options.dictionary_label)
+        local word = slotText(index, candidates, options.dictionary_label,
+            options.personal_offer)
         local virtual_key = options.VirtualKey:new{
             key = word,
             label = word,
@@ -36,7 +45,15 @@ function CandidateRow:create(options)
             if index == 1 then
                 options.on_toggle_dictionary()
             else
-                options.on_select_candidate(index - 1)
+                local offer = options.get_personal_offer
+                    and options.get_personal_offer()
+                if offer then
+                    if index == 3 then
+                        options.on_add_personal_word()
+                    end
+                else
+                    options.on_select_candidate(index - 1)
+                end
             end
         end
         table.insert(keys, virtual_key)
@@ -58,13 +75,15 @@ function CandidateRow:refresh(options)
     local candidates = options.candidates or {}
     for index, virtual_key in ipairs(options.keys or {}) do
         if not options.only_index or index == options.only_index then
-            local word = slotText(index, candidates, options.dictionary_label)
+            local word = slotText(index, candidates, options.dictionary_label,
+                options.personal_offer)
+            local changed = virtual_key.label ~= word
             virtual_key.key = word
             virtual_key.label = word
-            if virtual_key.swype_mvp_label_widget then
+            if changed and virtual_key.swype_mvp_label_widget then
                 virtual_key.swype_mvp_label_widget:setText(word)
             end
-            if virtual_key[1] and virtual_key[1].dimen then
+            if changed and virtual_key[1] and virtual_key[1].dimen then
                 options.UIManager:widgetRepaint(
                     virtual_key[1], virtual_key[1].dimen.x,
                     virtual_key[1].dimen.y)

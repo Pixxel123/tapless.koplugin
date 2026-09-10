@@ -44,6 +44,9 @@ function Normalization:normalizeChar(char, profile)
     local map = self.profiles[profile]
         or self.profiles[self.DEFAULT_PROFILE]
     char = map and map[char] or char
+    if char:match("^[A-Z]$") then
+        return string.lower(char)
+    end
     if char:match("^[a-z]$") then
         return char
     end

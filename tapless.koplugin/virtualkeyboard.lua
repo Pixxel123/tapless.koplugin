@@ -45,10 +45,13 @@ local DictionaryStore = dofile(plugin_dir .. "/dictionary_store.lua")
     :new(plugin_dir, DictionaryRegistry, DictionaryIndex, time)
 local InputSession = dofile(plugin_dir .. "/input_session.lua")
 local Normalization = dofile(plugin_dir .. "/normalization.lua"):new(plugin_dir)
+local PersonalDictionary = dofile(plugin_dir .. "/personal_dictionary.lua")
+    :new(Normalization, DictionaryIndex)
 local KeyboardGeometry = dofile(plugin_dir .. "/keyboard_geometry.lua")
     :new(Normalization)
 local PrefetchController = dofile(plugin_dir .. "/prefetch_controller.lua")
 local Scoring = dofile(plugin_dir .. "/scoring.lua"):new(Normalization)
+local GeometryReranker = dofile(plugin_dir .. "/geometry_reranker.lua"):new()
 local TraceCollector = dofile(plugin_dir .. "/trace_collector.lua")
 local GestureController = dofile(plugin_dir .. "/gesture_controller.lua")
     :new(TraceCollector, UIManager, time, Geom)
@@ -56,8 +59,10 @@ local TraceRenderer = dofile(plugin_dir .. "/trace_renderer.lua")
     :new(Screen, UIManager, Geom)
 local ContextModel = dofile(plugin_dir .. "/context_model.lua")
     :new(G_reader_settings, "keyboard_swype_mvp_context_counts")
+local TextCase = dofile(plugin_dir .. "/text_case.lua"):new(Normalization)
 local InputController = dofile(plugin_dir .. "/input_controller.lua")
-    :new(ContextModel, Normalization, logger)
+    :new(ContextModel, Normalization, logger, TextCase,
+        PersonalDictionary, DictionaryStore, UIManager)
 local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
     :new{
         plugin_dir = plugin_dir,
@@ -78,6 +83,7 @@ dofile(plugin_dir .. "/key_adapter.lua")
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
     dictionary_manager = DictionaryManager,
+    personal_dictionary = PersonalDictionary,
     plugin_dir = plugin_dir,
     horizontal_group = HorizontalGroup,
     virtual_key = VirtualKey,
@@ -86,7 +92,7 @@ local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     screen = Screen,
 }
 local RecognitionEngine = dofile(plugin_dir .. "/recognition_engine.lua")
-    :new(DictionaryStore, Scoring)
+    :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary)
 
 return dofile(plugin_dir .. "/koreader_adapter.lua"):new{
     input_session = InputSession,

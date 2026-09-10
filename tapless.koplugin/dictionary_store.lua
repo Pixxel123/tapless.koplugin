@@ -13,6 +13,7 @@ function DictionaryStore:new(plugin_dir, registry, dictionary_index, time_api)
         bucket_cache = {},
         first_bucket_cache = {},
         popular_cache = {},
+        word_presence_cache = {},
         prefetch_jobs = {},
     }, self)
 end
@@ -89,6 +90,11 @@ function DictionaryStore:keepOnly(dictionary)
             self.popular_cache[cached_dictionary] = nil
         end
     end
+    for cached_dictionary in pairs(self.word_presence_cache) do
+        if cached_dictionary ~= dictionary then
+            self.word_presence_cache[cached_dictionary] = nil
+        end
+    end
     for cached_dictionary, jobs in pairs(self.prefetch_jobs) do
         if cached_dictionary ~= dictionary then
             for _, job in pairs(jobs) do
@@ -111,11 +117,36 @@ function DictionaryStore:invalidate(dictionary)
     self.bucket_cache[dictionary] = nil
     self.first_bucket_cache[dictionary] = nil
     self.popular_cache[dictionary] = nil
+    self.word_presence_cache[dictionary] = nil
     local jobs = self.prefetch_jobs[dictionary]
     for _, job in pairs(jobs or {}) do
         job.cancelled = true
     end
     self.prefetch_jobs[dictionary] = nil
+end
+
+function DictionaryStore:containsWord(signature, word, dictionary)
+    if type(signature) ~= "string" or not signature:match("^[a-z]+$")
+            or type(word) ~= "string" then
+        return false
+    end
+    dictionary = dictionary or "en"
+    self.word_presence_cache[dictionary] =
+        self.word_presence_cache[dictionary] or {}
+    local cache = self.word_presence_cache[dictionary]
+    if cache[word] ~= nil then
+        return cache[word]
+    end
+    local bucket = self:loadBucket(
+        string.sub(signature, 1, 1), string.sub(signature, -1), dictionary)
+    for _, entry in ipairs(bucket and bucket.entries or {}) do
+        if entry.word == word then
+            cache[word] = true
+            return true
+        end
+    end
+    cache[word] = false
+    return false
 end
 
 function DictionaryStore:discardPrefetch(controller)

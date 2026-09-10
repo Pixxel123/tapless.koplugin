@@ -24,7 +24,7 @@ function PrefetchController:cancel()
     self.controller = nil
 end
 
-function PrefetchController:schedule(trace, dictionary)
+function PrefetchController:schedule(trace, dictionary, priority_lasts)
     if not trace or #trace.letters < 2 then
         return
     end
@@ -38,6 +38,7 @@ function PrefetchController:schedule(trace, dictionary)
             dictionary = dictionary,
             first = first,
             current_last = trace.letters[#trace.letters],
+            priority_lasts = priority_lasts,
             jobs = {},
         }
         self.controller = controller
@@ -45,6 +46,7 @@ function PrefetchController:schedule(trace, dictionary)
         controller.generation = self.generation
     else
         controller.current_last = trace.letters[#trace.letters]
+        controller.priority_lasts = priority_lasts
     end
     if controller.scheduled then
         return
@@ -60,28 +62,34 @@ function PrefetchController:schedule(trace, dictionary)
                 return
             end
 
-            local selected_key = controller.first
-                .. (controller.current_last or "")
             local selected_job
-            if not self.dictionary_store:isBucketLoaded(
-                    controller.dictionary, selected_key) then
-                selected_job = controller.jobs[selected_key]
-            else
-                selected_key = nil
+            local selected_key
+            local function select_last(last)
+                if not last then
+                    return
+                end
+                local key = controller.first .. last
+                local job = controller.jobs[key]
+                if not self.dictionary_store:isBucketLoaded(
+                        controller.dictionary, key)
+                        and (not job or not job.completed) then
+                    selected_key = key
+                    selected_job = job
+                end
             end
-            if not selected_key
-                    or (selected_job
-                        and (selected_job.completed or selected_job.cancelled)) then
-                selected_key = nil
-                selected_job = nil
+            for _, last in ipairs(controller.priority_lasts or {}) do
+                select_last(last)
+                if selected_key then
+                    break
+                end
+            end
+            if not selected_key then
+                select_last(controller.current_last)
+            end
+            if not selected_key then
                 for code = string.byte("a"), string.byte("z") do
-                    local key = controller.first .. string.char(code)
-                    local job = controller.jobs[key]
-                    if not self.dictionary_store:isBucketLoaded(
-                            controller.dictionary, key)
-                            and (not job or not job.completed) then
-                        selected_key = key
-                        selected_job = job
+                    select_last(string.char(code))
+                    if selected_key then
                         break
                     end
                 end
@@ -102,7 +110,7 @@ function PrefetchController:schedule(trace, dictionary)
             end
 
             local unfinished = false
-            for code = string.byte("a"), string.byte("z") do
+                for code = string.byte("a"), string.byte("z") do
                 local key = controller.first .. string.char(code)
                 if not self.dictionary_store:isBucketLoaded(
                         controller.dictionary, key) then

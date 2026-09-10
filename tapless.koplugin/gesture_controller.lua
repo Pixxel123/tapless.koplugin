@@ -28,7 +28,8 @@ function GestureController:scheduleFinalize(keyboard)
         (keyboard.swype_mvp_trace_generation or 0) + 1
     local generation = keyboard.swype_mvp_trace_generation
     self.ui_manager:scheduleIn(0.4, function()
-        if keyboard.swype_mvp_trace_generation ~= generation
+        if keyboard.swype_mvp_closed
+                or keyboard.swype_mvp_trace_generation ~= generation
                 or not keyboard.swype_mvp_trace
                 or not keyboard.swype_mvp_last_point_time
                 or self.time.now() - keyboard.swype_mvp_last_point_time
@@ -54,7 +55,7 @@ function GestureController:addPoint(keyboard, pos)
     end
     local letter, key = keyboard:_swypeKeyAt(pos)
     local result = self.trace_collector:addPoint(
-        keyboard.swype_mvp_trace, pos, letter, key and key.dimen)
+        keyboard.swype_mvp_trace, pos, letter, key and key.dimen, now)
     if result and result.point_added then
         keyboard:_swypeDrawTraceSegment(result.previous_point, result.point)
     end
@@ -91,6 +92,8 @@ function GestureController:finalizeTrace(keyboard)
     local trace_info = {
         letter_points = snapshot.letter_points,
         endpoint_pos = snapshot.endpoint_pos,
+        points = snapshot.points,
+        observations = snapshot.observations,
         previous_word = keyboard:_swypeGetPreviousWord(),
     }
     self:reset(keyboard, true)

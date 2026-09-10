@@ -1,12 +1,141 @@
 local InputController = {}
 InputController.__index = InputController
+local Utf8Proc = require("ffi/utf8proc")
 
-function InputController:new(context_model, normalization, logger)
+function InputController:new(context_model, normalization, logger, text_case,
+        personal_dictionary, dictionary_store, ui_manager)
     return setmetatable({
         context_model = assert(context_model),
         normalization = assert(normalization),
         logger = assert(logger),
+        text_case = assert(text_case),
+        personal_dictionary = assert(personal_dictionary),
+        dictionary_store = assert(dictionary_store),
+        ui_manager = assert(ui_manager),
     }, self)
+end
+
+function InputController:_wordAtEnd(text, profile, skip_trailing)
+    local chars = self.normalization:splitChars(text or "")
+    local index = #chars
+    if skip_trailing then
+        while index > 0
+                and not self.normalization:normalizeChar(chars[index], profile) do
+            index = index - 1
+        end
+    elseif index == 0
+            or not self.normalization:normalizeChar(chars[index], profile) then
+        return
+    end
+    local last = index
+    while index > 0
+            and self.normalization:normalizeChar(chars[index], profile) do
+        index = index - 1
+    end
+    if last - index < 2 then
+        return
+    end
+    local word = table.concat(chars, "", index + 1, last)
+    return self.personal_dictionary:prepareWord(word, profile) and word or nil
+end
+
+function InputController:_setPersonalOffer(keyboard, word)
+    local session = keyboard.swype_mvp_session
+    local current = session:getPersonalOffer()
+    local language = keyboard.swype_mvp_dictionary or "en"
+    local profile = keyboard.swype_mvp_normalization_profile
+    local prepared, signature = self.personal_dictionary:prepareWord(
+        word, profile)
+    local added = prepared and self.personal_dictionary:contains(
+        language, prepared, profile) or false
+    if prepared and not added
+            and self.dictionary_store:containsWord(
+                signature, prepared, language) then
+        word = nil
+    end
+    if not current and not word then
+        return
+    end
+    if current and current.word == word and current.added == added then
+        return
+    end
+    session:setPersonalOffer(word and { word = word, added = added } or nil)
+    keyboard:_swypeRefreshCandidateRow()
+end
+
+function InputController:_cancelPersonalOfferTimer(keyboard)
+    keyboard.swype_mvp_personal_offer_generation =
+        (keyboard.swype_mvp_personal_offer_generation or 0) + 1
+end
+
+function InputController:_schedulePersonalOffer(keyboard, completed)
+    self:_cancelPersonalOfferTimer(keyboard)
+    local generation = keyboard.swype_mvp_personal_offer_generation
+    local function show()
+        if keyboard.swype_mvp_closed
+                or keyboard.swype_mvp_personal_offer_generation ~= generation
+                or keyboard.swype_mvp_session:getCandidates() then
+            return
+        end
+        local text = keyboard.inputbox and keyboard.inputbox.getText
+            and keyboard.inputbox:getText() or ""
+        self:_setPersonalOffer(keyboard, self:_wordAtEnd(
+            text, keyboard.swype_mvp_normalization_profile, completed))
+    end
+    self.ui_manager:scheduleIn(completed and 0.01 or 0.45, show)
+end
+
+function InputController:_afterManualEdit(keyboard, completed)
+    if not completed then
+        local had_offer = keyboard.swype_mvp_session:clearPersonalOffer()
+        if had_offer then
+            keyboard:_swypeRefreshCandidateRow()
+        end
+    end
+    self:_schedulePersonalOffer(keyboard, completed)
+end
+
+function InputController:_clearPersonalOffer(keyboard)
+    self:_cancelPersonalOfferTimer(keyboard)
+    if keyboard.swype_mvp_session:clearPersonalOffer() then
+        keyboard:_swypeRefreshCandidateRow()
+    end
+end
+
+function InputController:addPersonalWord(keyboard)
+    local offer = keyboard.swype_mvp_session:getPersonalOffer()
+    if not offer or offer.added then
+        return false
+    end
+    local ok, err = self.personal_dictionary:add(
+        keyboard.swype_mvp_dictionary or "en", offer.word,
+        keyboard.swype_mvp_normalization_profile)
+    if not ok then
+        self.logger.warn("Tapless: cannot add personal word", err)
+        return false
+    end
+    offer.added = true
+    keyboard:_swypeRefreshCandidateRow()
+    return true
+end
+
+function InputController:applyCandidateCase(keyboard, candidates)
+    local mode
+    if keyboard.shiftmode and not keyboard.symbolmode then
+        mode = keyboard.release_shift and "title" or "upper"
+    end
+    local language = keyboard.swype_mvp_dictionary
+    for _, candidate in ipairs(candidates or {}) do
+        candidate.output_word = self.text_case:apply(
+            candidate.word, mode, language)
+    end
+end
+
+function InputController:releaseOneShotShift(keyboard)
+    if keyboard.shiftmode and not keyboard.symbolmode
+            and keyboard.release_shift and keyboard.setLayer then
+        keyboard:setLayer("Shift")
+    end
 end
 
 function InputController:deleteText(keyboard, text)
@@ -22,7 +151,7 @@ function InputController:getPreviousWord(keyboard)
     local text = keyboard.inputbox:getText() or ""
     local word = text:match("([^%s%p%d]+)%s*$")
     if word and #word > 0 then
-        return string.lower(word)
+        return Utf8Proc.lowercase_dumb(word)
     end
 end
 
@@ -43,6 +172,7 @@ function InputController:saveContext()
 end
 
 function InputController:clearCandidateState(keyboard, keep_debug)
+    self:_cancelPersonalOfferTimer(keyboard)
     keyboard.swype_mvp_session:clear(keep_debug)
 end
 
@@ -95,12 +225,14 @@ function InputController:insertBestAndShowCandidates(
         keyboard:_swypeRefreshCandidateRow()
         return false
     end
-    local inserted = candidates[1].word .. " "
+    self:applyCandidateCase(keyboard, candidates)
+    local inserted = keyboard.swype_mvp_session:recordInsert(
+        signature, candidates, previous_word)
     self.logger.dbg("swype mvp best", signature, "=>", candidates[1].word)
     keyboard.inputbox:addChars(inserted)
-    keyboard.swype_mvp_session:recordInsert(
-        signature, candidates, previous_word)
     keyboard:_swypeRefreshCandidateRow()
+    self:releaseOneShotShift(keyboard)
+    return true
 end
 
 function InputController:finalizeSignature(keyboard, signature, trace_info)
@@ -128,6 +260,16 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
     end
     self.logger.dbg("add char", key)
     keyboard.inputbox:addChars(key)
+    local chars = self.normalization:splitChars(key or "")
+    local last = chars[#chars]
+    if last and self.normalization:normalizeChar(
+            last, keyboard.swype_mvp_normalization_profile) then
+        self:_afterManualEdit(keyboard, false)
+    elseif last and (last:match("^%s$") or last:match("^%p$")) then
+        self:_afterManualEdit(keyboard, true)
+    else
+        self:_clearPersonalOffer(keyboard)
+    end
 end
 
 function InputController:delChar(keyboard)
@@ -136,6 +278,7 @@ function InputController:delChar(keyboard)
     end
     self.logger.dbg("delete char")
     keyboard.inputbox:delChar()
+    self:_afterManualEdit(keyboard, false)
 end
 
 return InputController

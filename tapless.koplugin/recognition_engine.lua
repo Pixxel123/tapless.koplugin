@@ -1,10 +1,16 @@
 local RecognitionEngine = {}
 RecognitionEngine.__index = RecognitionEngine
 
-function RecognitionEngine:new(dictionary_store, scoring)
+local DYNAMIC_CANDIDATE_LIMIT = 40
+local GEOMETRY_CANDIDATE_LIMIT = 12
+
+function RecognitionEngine:new(dictionary_store, scoring, geometry_reranker,
+        personal_dictionary)
     return setmetatable({
         dictionary_store = assert(dictionary_store),
         scoring = assert(scoring),
+        geometry_reranker = geometry_reranker,
+        personal_dictionary = personal_dictionary,
     }, self)
 end
 
@@ -23,7 +29,7 @@ function RecognitionEngine:pickCandidates(options)
     local first = string.sub(signature, 1, 1)
     local last = string.sub(signature, -1)
     local max_spatial = math.max(6, #signature)
-    local results, seen = {}, {}
+    local shortlist, seen = {}, {}
 
     local function scan(entries, allow_endpoint_mismatch)
         for _, entry in ipairs(entries or {}) do
@@ -41,16 +47,26 @@ function RecognitionEngine:pickCandidates(options)
                     allow_endpoint_mismatch,
                     context_bonus)
                 if spatial_score <= max_spatial then
-                    self.scoring:addCandidate(results, seen, entry,
-                        spatial_score, ranked_score, limit)
+                    self.scoring:addCandidate(shortlist, seen, entry,
+                        spatial_score, ranked_score,
+                        math.max(limit, DYNAMIC_CANDIDATE_LIMIT), {
+                            allow_endpoint_mismatch = allow_endpoint_mismatch,
+                            context_bonus = context_bonus,
+                            entry = entry,
+                        })
                 end
             end
         end
     end
 
+    local personal_bucket = self.personal_dictionary
+        and self.personal_dictionary:getBucket(first, last, dictionary,
+            options.normalization_profile)
+    scan(personal_bucket and personal_bucket.entries)
+
     local bucket = self.dictionary_store:loadBucket(first, last, dictionary)
     for length = 2, math.min(14, #signature) do
-        scan(bucket and bucket.by_length[length])
+        scan(bucket and bucket.by_gesture_length[length])
     end
 
     if #signature >= 3 and trace_info and trace_info.endpoint_pos
@@ -61,14 +77,21 @@ function RecognitionEngine:pickCandidates(options)
                 local endpoint_last = endpoint_letters[index]
                 local endpoint_bucket = self.dictionary_store:loadBucket(
                     first, endpoint_last, dictionary)
+                local personal_endpoint_bucket = self.personal_dictionary
+                    and self.personal_dictionary:getBucket(
+                        first, endpoint_last, dictionary,
+                        options.normalization_profile)
+                scan(personal_endpoint_bucket
+                    and personal_endpoint_bucket.entries, true)
                 for length = 2, math.min(14, #signature) do
-                    scan(endpoint_bucket and endpoint_bucket.by_length[length], true)
+                    scan(endpoint_bucket
+                        and endpoint_bucket.by_gesture_length[length], true)
                 end
             end
         end
     end
 
-    if #results == 0 then
+    if #shortlist == 0 then
         local popular_entries = self.dictionary_store:loadPopularWords(
             first, dictionary)
         if popular_entries then
@@ -77,7 +100,48 @@ function RecognitionEngine:pickCandidates(options)
             scan(self.dictionary_store:loadFirstBuckets(first, dictionary))
         end
     end
-    return results
+    local results, final_seen = {}, {}
+    for _, candidate in ipairs(shortlist) do
+        local metadata = candidate.metadata
+        local entry = metadata and metadata.entry
+        if entry then
+            local spatial_score, ranked_score = self.scoring:scoreEntryDynamic(
+                signature,
+                entry,
+                trace_chars,
+                trace_info,
+                key_centers,
+                metadata.allow_endpoint_mismatch,
+                metadata.context_bonus)
+            if spatial_score <= max_spatial then
+                self.scoring:addCandidate(results, final_seen, entry,
+                    spatial_score, ranked_score,
+                    math.max(limit, GEOMETRY_CANDIDATE_LIMIT))
+            end
+        end
+    end
+    if #results > 0 then
+        if self.geometry_reranker then
+            return self.geometry_reranker:rerank(
+                results, trace_info, key_centers, limit)
+        end
+        while #results > limit do
+            table.remove(results)
+        end
+        return results
+    end
+
+    local fallback = {}
+    for index = 1, math.min(limit, #shortlist) do
+        local candidate = shortlist[index]
+        fallback[index] = {
+            word = candidate.word,
+            signature = candidate.signature,
+            spatial_score = candidate.spatial_score,
+            ranked_score = candidate.ranked_score,
+        }
+    end
+    return fallback
 end
 
 return RecognitionEngine

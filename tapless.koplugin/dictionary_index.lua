@@ -1,5 +1,34 @@
 local DictionaryIndex = {}
 
+local function collapseRepeats(signature)
+    local has_repeats = false
+    for index = 2, #signature do
+        if string.byte(signature, index) == string.byte(signature, index - 1) then
+            has_repeats = true
+            break
+        end
+    end
+    if not has_repeats then
+        return signature
+    end
+
+    local collapsed = {}
+    local repeat_positions
+    local previous
+    for index = 1, #signature do
+        local character = string.sub(signature, index, index)
+        if character == previous then
+            repeat_positions = repeat_positions or {}
+            local position = #collapsed
+            repeat_positions[position] = (repeat_positions[position] or 0) + 1
+        else
+            table.insert(collapsed, character)
+            previous = character
+        end
+    end
+    return table.concat(collapsed), repeat_positions
+end
+
 local function indexPattern(key_length)
     if key_length == 1 then
         return "^([a-z])\t([0-9]+)\t([0-9]+)\t([0-9]+)$"
@@ -43,7 +72,7 @@ end
 function DictionaryIndex:newBucket()
     return {
         entries = {},
-        by_length = {},
+        by_gesture_length = {},
     }
 end
 
@@ -53,16 +82,20 @@ function DictionaryIndex:addBucketLine(bucket, line)
     if not signature or not word or not freq then
         return
     end
+    local gesture_signature, repeat_positions = collapseRepeats(signature)
     local entry = {
         signature = signature,
+        gesture_signature = gesture_signature,
+        repeat_positions = repeat_positions,
         word = word,
         freq = tonumber(freq) or 0,
         lang = lang,
     }
     table.insert(bucket.entries, entry)
-    local length = #signature
-    bucket.by_length[length] = bucket.by_length[length] or {}
-    table.insert(bucket.by_length[length], entry)
+    local gesture_length = #gesture_signature
+    bucket.by_gesture_length[gesture_length] =
+        bucket.by_gesture_length[gesture_length] or {}
+    table.insert(bucket.by_gesture_length[gesture_length], entry)
     return entry
 end
 

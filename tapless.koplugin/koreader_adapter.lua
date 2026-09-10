@@ -17,6 +17,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     local adapter = self
 
     function VirtualKeyboard:init()
+        self.swype_mvp_closed = false
         self.swype_mvp_session = self.swype_mvp_session
             or adapter.input_session:new()
         self.swype_mvp_prefetch_controller = self.swype_mvp_prefetch_controller
@@ -156,16 +157,20 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:onShow()
+        self.swype_mvp_closed = false
         local result = original_show(self)
         self:_swypeScheduleWarmUp()
         return result
     end
 
     function VirtualKeyboard:onCloseWidget()
+        self.swype_mvp_closed = true
+        self:_swypeReset()
         adapter.dictionary_controller:stopWarmUp(self)
         self:_swypeCancelBucketPrefetch()
         self:_swypeCommitPendingContext()
         self:_swypeSaveContext()
+        self:_swypeClearCandidateState()
         return original_close_widget(self)
     end
 
@@ -199,8 +204,17 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:_swypeScheduleBucketPrefetch()
+        local trace = self.swype_mvp_trace
+        local priority_lasts
+        if trace and trace.points and #trace.points > 0
+                and trace.letters and #trace.letters > 0 then
+            priority_lasts = adapter.keyboard_geometry:endpointLetters(
+                self.layout, trace.points[#trace.points],
+                trace.letters[#trace.letters],
+                self.swype_mvp_normalization_profile)
+        end
         self.swype_mvp_prefetch_controller:schedule(
-            self.swype_mvp_trace, self.swype_mvp_dictionary or "en")
+            trace, self.swype_mvp_dictionary or "en", priority_lasts)
     end
 
     function VirtualKeyboard:_swypeReset(keep_prefetch)
@@ -224,6 +238,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
             context_bonus = function(previous_word, word)
                 return self:_swypeContextBonus(previous_word, word)
             end,
+            normalization_profile = self.swype_mvp_normalization_profile,
         }
     end
 
@@ -270,6 +285,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
 
     function VirtualKeyboard:_swypeSelectCandidate(candidate)
         adapter.input_controller:selectCandidate(self, candidate)
+    end
+
+    function VirtualKeyboard:_swypeAddPersonalWord()
+        return adapter.input_controller:addPersonalWord(self)
     end
 
     function VirtualKeyboard:_swypeFinalizeSignature(signature, trace_info)

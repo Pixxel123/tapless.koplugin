@@ -5,6 +5,7 @@ function KeyboardUI:new(options)
     return setmetatable({
         candidate_row = assert(options.candidate_row),
         dictionary_manager = assert(options.dictionary_manager),
+        personal_dictionary = assert(options.personal_dictionary),
         plugin_dir = assert(options.plugin_dir),
         horizontal_group = assert(options.horizontal_group),
         virtual_key = assert(options.virtual_key),
@@ -25,9 +26,11 @@ function KeyboardUI:createCandidateRow(keyboard, options)
         padding = options.padding,
         horizontal_padding = options.horizontal_padding,
         candidates = keyboard.swype_mvp_session:getCandidates(),
+        personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
         dictionary_label = keyboard:_swypeDictionaryLabel(),
         on_open_manager = function()
-            self.dictionary_manager:open(keyboard, self.plugin_dir)
+            self.dictionary_manager:open(
+                keyboard, self.plugin_dir, self.personal_dictionary)
             keyboard:onClose()
         end,
         on_toggle_dictionary = function()
@@ -40,6 +43,12 @@ function KeyboardUI:createCandidateRow(keyboard, options)
             if candidate then
                 keyboard:_swypeSelectCandidate(candidate)
             end
+        end,
+        get_personal_offer = function()
+            return keyboard.swype_mvp_session:getPersonalOffer()
+        end,
+        on_add_personal_word = function()
+            keyboard:_swypeAddPersonalWord()
         end,
     }
 end
@@ -79,6 +88,7 @@ function KeyboardUI:refreshCandidateRow(keyboard, refresh_type, only_index)
     self.candidate_row:refresh{
         keys = keyboard.swype_mvp_candidate_keys,
         candidates = keyboard.swype_mvp_session:getCandidates(),
+        personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
         dictionary_label = keyboard:_swypeDictionaryLabel(),
         refresh_type = refresh_type or "ui",
         only_index = only_index,

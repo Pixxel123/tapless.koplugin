@@ -45,6 +45,7 @@ local Manager = {
     catalog_path = nil,
     plugin_dir = nil,
     keyboard = nil,
+    personal_dictionary = nil,
     menu = nil,
     loading_message = nil,
     busy = false,
@@ -366,6 +367,81 @@ function Manager:_uninstall(id, name)
     })
 end
 
+function Manager:_personalContext()
+    local keyboard = self.keyboard
+    return keyboard and (keyboard.swype_mvp_dictionary or "en") or "en",
+        keyboard and keyboard.swype_mvp_normalization_profile or nil
+end
+
+function Manager:_removePersonalWord(word)
+    local language, profile = self:_personalContext()
+    UIManager:show(ConfirmBox:new{
+        text = "Remove \"" .. word .. "\" from personal words?",
+        ok_text = "Remove",
+        ok_callback = function()
+            local removed, err = self.personal_dictionary:remove(
+                language, word, profile)
+            if removed then
+                self:_notify("Removed personal word: " .. word)
+            else
+                self:_notify("Failed to remove personal word:\n"
+                    .. tostring(err or word))
+            end
+            self:showPersonalWords()
+        end,
+    })
+end
+
+function Manager:showPersonalWords()
+    self:_closeMenu()
+    if not self.personal_dictionary then
+        self:_notify("Personal words are unavailable.")
+        self:showMenu()
+        return
+    end
+    local language, profile = self:_personalContext()
+    local words = self.personal_dictionary:list(language, profile)
+    local buttons = {}
+    local action_width = Screen:scaleBySize(140)
+    for _, word in ipairs(words) do
+        table.insert(buttons, {
+            {
+                text = word,
+                align = "left",
+                enabled = false,
+                callback = function() end,
+            },
+            {
+                text = "Remove",
+                width = action_width,
+                callback = function() self:_removePersonalWord(word) end,
+            },
+        })
+    end
+    if #words == 0 then
+        table.insert(buttons, {
+            {
+                text = "No personal words",
+                enabled = false,
+                callback = function() end,
+            },
+        })
+    end
+    table.insert(buttons, {
+        {
+            text = "Back",
+            callback = function() self:showMenu() end,
+        },
+    })
+    self.menu = ButtonDialog:new{
+        title = "Tapless: Personal words (" .. string.upper(language) .. ")",
+        width_factor = 0.95,
+        rows_per_page = 8,
+        buttons = buttons,
+    }
+    UIManager:show(self.menu)
+end
+
 function Manager:_packageUrl(package)
     if package.download_url and package.download_url:match("^https://") then
         return package.download_url
@@ -576,6 +652,16 @@ function Manager:showMenu()
     end)
     local buttons = {}
     local action_width = Screen:scaleBySize(140)
+    if self.personal_dictionary then
+        local language, profile = self:_personalContext()
+        local personal_count = #self.personal_dictionary:list(language, profile)
+        table.insert(buttons, {
+            {
+                text = "Personal words (" .. personal_count .. ")",
+                callback = function() self:showPersonalWords() end,
+            },
+        })
+    end
     for _, id in ipairs(ordered) do
         local info = installed[id]
         local package = packages[id]
@@ -637,9 +723,10 @@ function Manager:showMenu()
     UIManager:show(self.menu)
 end
 
-function Manager:open(keyboard, plugin_dir)
+function Manager:open(keyboard, plugin_dir, personal_dictionary)
     self.keyboard = keyboard
     self.plugin_dir = plugin_dir or self.plugin_dir
+    self.personal_dictionary = personal_dictionary or self.personal_dictionary
     self.catalog_path = localRoot() .. "/catalog.json"
     if not self.catalog then
         self:_loadCachedCatalog()
