@@ -1,10 +1,11 @@
 local KeyAdapter = {}
 KeyAdapter.__index = KeyAdapter
 
-function KeyAdapter:new(normalization, gesture_range)
+function KeyAdapter:new(normalization, gesture_range, settings)
     return setmetatable({
         normalization = assert(normalization),
         gesture_range = assert(gesture_range),
+        settings = assert(settings),
     }, self)
 end
 
@@ -27,7 +28,45 @@ function KeyAdapter:install(VirtualKey)
     local adapter = self
 
     VirtualKey.init = function(key)
-        original_init(key)
+        local font_setting = adapter.settings:readSetting(
+            "tapless_keyboard_font_size", "auto")
+        local tapless_size = font_setting
+
+        if font_setting == "auto" then
+            local keyboard_size = adapter.settings:readSetting(
+                "tapless_keyboard_size", "normal")
+            if keyboard_size == "extra_compact" then
+                tapless_size = 18
+            elseif keyboard_size == "compact" then
+                tapless_size = 20
+            elseif keyboard_size == "large" then
+                tapless_size = 26
+            else
+                tapless_size = 22
+            end
+        elseif tapless_size ~= 18 and tapless_size ~= 22
+                and tapless_size ~= 26 then
+            tapless_size = 22
+        end
+
+        -- VirtualKey reads KOReader's global font-size setting during init.
+        -- Override that read in memory only, then restore it immediately so
+        -- disabling Tapless leaves the stock keyboard setting untouched.
+        local original_read_setting = adapter.settings.readSetting
+        adapter.settings.readSetting = function(settings, setting, default)
+            if setting == "keyboard_key_font_size" then
+                return tapless_size
+            end
+            return original_read_setting(settings, setting, default)
+        end
+
+        local ok, err = pcall(original_init, key)
+        adapter.settings.readSetting = original_read_setting
+
+        if not ok then
+            error(err)
+        end
+
         local frame = key[1]
         local center = frame and frame[1]
  local content = center and center[1]

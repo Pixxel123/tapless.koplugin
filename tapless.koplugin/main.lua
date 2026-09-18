@@ -110,6 +110,59 @@ function Tapless:addToMainMenu(menu_items)
                     },
                 },
             },
+            {
+                text = "Keyboard text size",
+                sub_item_table = {
+                    {
+                        text = "Auto",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_font_size", "auto") == "auto"
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_font_size", "auto")
+                        end,
+                    },
+                    {
+                        text = "Small",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_font_size", "auto") == 18
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_font_size", 18)
+                        end,
+                    },
+                    {
+                        text = "Normal",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_font_size", "auto") == 22
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_font_size", 22)
+                        end,
+                    },
+                    {
+                        text = "Large",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_font_size", "auto") == 26
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_font_size", 26)
+                        end,
+                    },
+                },
+            },
         },
     }
 end

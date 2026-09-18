@@ -82,7 +82,7 @@ local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
 DictionaryManager.language_controller = DictionaryController
 
 dofile(plugin_dir .. "/key_adapter.lua")
-    :new(Normalization, GestureRange):install(VirtualKey)
+    :new(Normalization, GestureRange, G_reader_settings):install(VirtualKey)
 
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
