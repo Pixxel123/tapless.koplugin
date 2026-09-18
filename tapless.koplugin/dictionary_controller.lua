@@ -190,6 +190,127 @@ function DictionaryController:onDictionaryRemoved(id)
     end
 end
 
+function DictionaryController:needsLanguageSetup()
+    if self.settings:isTrue(self.setup_setting_key) then
+        return false
+    end
+
+    local installed = self:_installed()
+
+    -- There is nothing useful to choose when zero or one dictionary exists.
+    if #installed <= 1 then
+        local enabled = {}
+        if installed[1] then
+            enabled[1] = installed[1].id
+            self.settings:saveSetting(self.setting_key, installed[1].id)
+        end
+        self.settings:saveSetting(self.enabled_setting_key, enabled)
+        self.settings:saveSetting(self.setup_setting_key, true)
+        return false
+    end
+
+    return true
+end
+
+function DictionaryController:initialLanguageSelection(keyboard)
+    local selected = {}
+    local configured = self.settings:readSetting(self.enabled_setting_key)
+
+    -- Keep an existing enabled-language choice when upgrading.
+    if type(configured) == "table" then
+        for _, id in ipairs(configured) do
+            if self.manager:isDictionaryAvailable(id, self.plugin_dir) then
+                selected[id] = true
+            end
+        end
+    end
+
+    -- On a fresh install, start with the current dictionary only. The user
+    -- can select more languages before continuing.
+    if not next(selected) then
+        local active = self:activeDictionary(keyboard)
+        if self.manager:isDictionaryAvailable(active, self.plugin_dir) then
+            selected[active] = true
+        else
+            local installed = self:_installed()
+            if installed[1] then
+                selected[installed[1].id] = true
+            end
+        end
+    end
+
+    return selected
+end
+
+function DictionaryController:completeLanguageSetup(selected, keyboard)
+    local enabled_ids = {}
+
+    for _, info in ipairs(self:_installed()) do
+        if selected[info.id] then
+            table.insert(enabled_ids, info.id)
+        end
+    end
+
+    if #enabled_ids == 0 then
+        return false, "Choose at least one language."
+    end
+
+    local previous = self.settings:readSetting(self.enabled_setting_key)
+    self.settings:saveSetting(self.enabled_setting_key, enabled_ids)
+
+    local active = self:activeDictionary(keyboard)
+    local active_enabled = false
+    for _, id in ipairs(enabled_ids) do
+        if id == active then
+            active_enabled = true
+            break
+        end
+    end
+
+    if not active_enabled then
+        if keyboard then
+            if not self:setDictionary(keyboard, enabled_ids[1]) then
+                if previous == nil then
+                    self.settings:delSetting(self.enabled_setting_key)
+                else
+                    self.settings:saveSetting(
+                        self.enabled_setting_key, previous)
+                end
+                return false, "Cannot select the chosen language."
+            end
+        else
+            self.settings:saveSetting(self.setting_key, enabled_ids[1])
+        end
+    end
+
+    self.settings:saveSetting(self.setup_setting_key, true)
+    return true
+end
+
+function DictionaryController:scheduleLanguageSetup(keyboard)
+    if not self:needsLanguageSetup() then
+        return
+    end
+
+    self.ui_manager:scheduleIn(0, function()
+        if keyboard.swype_mvp_closed then
+            return
+        end
+
+        local selected = self:initialLanguageSelection(keyboard)
+
+        -- The setup dialog should replace the keyboard rather than appear
+        -- behind it. Passing no keyboard also makes setup update the saved
+        -- active language, which is applied when the keyboard opens again.
+        keyboard:onClose()
+
+        self.ui_manager:scheduleIn(0, function()
+            self.manager:showLanguageSetup(
+                nil, self.plugin_dir, selected)
+        end)
+    end)
+end
+
 function DictionaryController:initialize(keyboard)
     local dictionary = self.settings:readSetting(self.setting_key, "en")
     if not self.manager:isDictionaryAvailable(dictionary, self.plugin_dir)

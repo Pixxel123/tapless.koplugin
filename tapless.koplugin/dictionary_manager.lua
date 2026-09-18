@@ -48,6 +48,8 @@ local Manager = {
     personal_dictionary = nil,
     language_controller = nil,
     menu = nil,
+    language_setup_menu = nil,
+    language_setup_selected = nil,
     loading_message = nil,
     busy = false,
 }
@@ -776,6 +778,71 @@ function Manager:showMenu()
         buttons = buttons,
     }
     UIManager:show(self.menu)
+end
+
+function Manager:_closeLanguageSetup()
+    if self.language_setup_menu then
+        UIManager:close(self.language_setup_menu)
+        self.language_setup_menu = nil
+    end
+end
+
+function Manager:_showLanguageSetupMenu()
+    self:_closeLanguageSetup()
+
+    local selected = self.language_setup_selected or {}
+    local buttons = {}
+
+    for _, info in ipairs(self:listInstalled(self.plugin_dir)) do
+        local id = info.id
+        local name = info.name or id
+        table.insert(buttons, {
+            {
+                text = (selected[id] and "[x] " or "[ ] ") .. name,
+                align = "left",
+                callback = function()
+                    selected[id] = not selected[id]
+                    self:_showLanguageSetupMenu()
+                end,
+            },
+        })
+    end
+
+    table.insert(buttons, {
+        {
+            text = "Use selected languages",
+            callback = function()
+                local ok, err = self.language_controller:
+                    completeLanguageSetup(selected, self.keyboard)
+                if not ok then
+                    self:_notify(err or "Cannot save language selection.")
+                    return
+                end
+
+                self:_closeLanguageSetup()
+                self.language_setup_selected = nil
+            end,
+        },
+    })
+
+    self.language_setup_menu = ButtonDialog:new{
+        title = "Tapless: Choose languages",
+        width_factor = 0.9,
+        rows_per_page = 8,
+        buttons = buttons,
+    }
+    UIManager:show(self.language_setup_menu)
+end
+
+function Manager:showLanguageSetup(keyboard, plugin_dir, selected)
+    if self.language_setup_menu then
+        return
+    end
+
+    self.keyboard = keyboard
+    self.plugin_dir = plugin_dir or self.plugin_dir
+    self.language_setup_selected = selected or {}
+    self:_showLanguageSetupMenu()
 end
 
 function Manager:open(keyboard, plugin_dir, personal_dictionary)

@@ -172,6 +172,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self.swype_mvp_closed = false
         local result = original_show(self)
         self:_swypeScheduleWarmUp()
+        adapter.dictionary_controller:scheduleLanguageSetup(self)
         return result
     end
 
