@@ -35,8 +35,20 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self:free()
         self.layout = {}
         local row_count = #self.KEYS + 1
-        local keys_height = adapter.settings:isTrue("keyboard_key_compact")
-            and 48 or 64
+        local keyboard_size = adapter.settings:readSetting(
+            "tapless_keyboard_size")
+        local keys_height
+        if keyboard_size == "extra_compact" then
+            keys_height = 40
+        elseif keyboard_size == "compact" then
+            keys_height = 48
+        elseif keyboard_size == "large" then
+            keys_height = 80
+        elseif keyboard_size == "normal" then
+            keys_height = 64
+        else
+            keys_height = 64
+        end
         self.height = adapter.screen:scaleBySize(keys_height * row_count)
         local base_key_width = math.floor((self.width
             - (#self.KEYS[1] + 1) * self.key_padding - 2 * self.padding)

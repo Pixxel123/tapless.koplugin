@@ -55,6 +55,61 @@ function Tapless:addToMainMenu(menu_items)
                     plugin:openDictionaryManager()
                 end,
             },
+            {
+                text = "Keyboard size",
+                sub_item_table = {
+                    {
+                        text = "Extra compact",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_size") == "extra_compact"
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_size", "extra_compact")
+                        end,
+                    },
+                    {
+                        text = "Compact",
+                        radio = true,
+                        checked_func = function()
+                            local value = G_reader_settings:readSetting(
+                                "tapless_keyboard_size")
+                            return value == "compact"
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_size", "compact")
+                        end,
+                    },
+                    {
+                        text = "Normal",
+                        radio = true,
+                        checked_func = function()
+                            local value = G_reader_settings:readSetting(
+                                "tapless_keyboard_size")
+                            return value == "normal" or value == nil
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_size", "normal")
+                        end,
+                    },
+                    {
+                        text = "Large",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_size") == "large"
+                        end,
+                        callback = function()
+                            G_reader_settings:saveSetting(
+                                "tapless_keyboard_size", "large")
+                        end,
+                    },
+                },
+            },
         },
     }
 end
