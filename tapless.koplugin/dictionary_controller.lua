@@ -35,7 +35,7 @@ function DictionaryController:toggle(keyboard)
     keyboard:_swypeCommitPendingContext()
     local installed = self.manager:listInstalled(self.plugin_dir)
     if #installed < 2 then
-        self.manager:open(keyboard, self.plugin_dir)
+ keyboard:_swypeOpenDictionaryManager()
         return
     end
     local current_index
@@ -65,7 +65,7 @@ function DictionaryController:setDictionary(keyboard, dictionary)
     self.logger.info(
         "swype mvp dictionary selected", keyboard.swype_mvp_dictionary)
     keyboard:_swypeClearCandidateRow("ui")
-    keyboard:_swypeRefreshCandidateRow("flashui", 1)
+ keyboard:_swypeRefreshLanguageIndicator("flashui")
     keyboard:_swypeScheduleWarmUp(0.1)
     return true
 end

@@ -30,9 +30,20 @@ function KeyAdapter:install(VirtualKey)
         original_init(key)
         local frame = key[1]
         local center = frame and frame[1]
-        local label_widget = center and center[1]
-        if label_widget and label_widget.setText then
-            key.swype_mvp_label_widget = label_widget
+ local content = center and center[1]
+ if key.alt_label and content then
+ local main_container = content[1]
+ local alt_container = content[2]
+ local main_widget = main_container and main_container[1]
+ local alt_widget = alt_container and alt_container[1]
+ if main_widget and main_widget.setText then
+ key.swype_mvp_label_widget = main_widget
+ end
+ if alt_widget and alt_widget.setText then
+ key.swype_mvp_alt_label_widget = alt_widget
+ end
+ elseif content and content.setText then
+ key.swype_mvp_label_widget = content
         end
         if adapter:isTextKey(key) then
             key.swipe_callback = nil

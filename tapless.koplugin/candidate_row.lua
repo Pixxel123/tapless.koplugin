@@ -1,18 +1,15 @@
 local CandidateRow = {}
 
-local function slotText(index, candidates, dictionary_label, personal_offer)
-    if index == 1 then
-        return dictionary_label
-    end
+local function slotText(index, candidates, personal_offer)
     if personal_offer then
-        if index == 2 then
+ if index == 1 then
             return personal_offer.word
-        elseif index == 3 then
+ elseif index == 2 then
             return personal_offer.added and "✓" or "+"
         end
         return " "
     end
-    local candidate = candidates[index - 1]
+ local candidate = candidates[index]
     return candidate and (candidate.output_word or candidate.word) or " "
 end
 
@@ -29,8 +26,7 @@ function CandidateRow:create(options)
             - 2 * options.padding) / slot_count)
 
     for index = 1, slot_count do
-        local word = slotText(index, candidates, options.dictionary_label,
-            options.personal_offer)
+ local word = slotText(index, candidates, options.personal_offer)
         local virtual_key = options.VirtualKey:new{
             key = word,
             label = word,
@@ -40,20 +36,16 @@ function CandidateRow:create(options)
         }
         virtual_key.is_swype_candidate = true
         virtual_key.swipe_callback = nil
-        virtual_key.hold_callback = index == 1 and options.on_open_manager or nil
+ virtual_key.hold_callback = nil
         virtual_key.callback = function()
-            if index == 1 then
-                options.on_toggle_dictionary()
-            else
                 local offer = options.get_personal_offer
                     and options.get_personal_offer()
                 if offer then
-                    if index == 3 then
+ if index == 2 then
                         options.on_add_personal_word()
                     end
                 else
-                    options.on_select_candidate(index - 1)
-                end
+ options.on_select_candidate(index)
             end
         end
         table.insert(keys, virtual_key)
@@ -75,8 +67,7 @@ function CandidateRow:refresh(options)
     local candidates = options.candidates or {}
     for index, virtual_key in ipairs(options.keys or {}) do
         if not options.only_index or index == options.only_index then
-            local word = slotText(index, candidates, options.dictionary_label,
-                options.personal_offer)
+ local word = slotText(index, candidates, options.personal_offer)
             local changed = virtual_key.label ~= word
             virtual_key.key = word
             virtual_key.label = word

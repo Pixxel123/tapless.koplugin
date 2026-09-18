@@ -27,15 +27,6 @@ function KeyboardUI:createCandidateRow(keyboard, options)
         horizontal_padding = options.horizontal_padding,
         candidates = keyboard.swype_mvp_session:getCandidates(),
         personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
-        dictionary_label = keyboard:_swypeDictionaryLabel(),
-        on_open_manager = function()
-            self.dictionary_manager:open(
-                keyboard, self.plugin_dir, self.personal_dictionary)
-            keyboard:onClose()
-        end,
-        on_toggle_dictionary = function()
-            keyboard:_swypeToggleDictionary()
-        end,
         on_select_candidate = function(index)
             local candidates =
                 keyboard.swype_mvp_session:getCandidates() or {}
@@ -89,11 +80,37 @@ function KeyboardUI:refreshCandidateRow(keyboard, refresh_type, only_index)
         keys = keyboard.swype_mvp_candidate_keys,
         candidates = keyboard.swype_mvp_session:getCandidates(),
         personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
-        dictionary_label = keyboard:_swypeDictionaryLabel(),
         refresh_type = refresh_type or "ui",
         only_index = only_index,
         UIManager = self.ui_manager,
     }
+end
+
+function KeyboardUI:openDictionaryManager(keyboard)
+ self.dictionary_manager:open(
+ keyboard, self.plugin_dir, self.personal_dictionary)
+ keyboard:onClose()
+end
+
+function KeyboardUI:refreshLanguageIndicator(keyboard, refresh_type)
+ local key = keyboard.swype_mvp_language_key
+ if not key then
+ return
+ end
+
+ local label = keyboard:_swypeDictionaryLabel()
+ key.alt_label = label
+
+ if key.swype_mvp_alt_label_widget then
+ key.swype_mvp_alt_label_widget:setText(label)
+ end
+
+ if key[1] and key[1].dimen then
+ self.ui_manager:widgetRepaint(
+ key[1], key[1].dimen.x, key[1].dimen.y)
+ self.ui_manager:setDirty(
+ nil, refresh_type or "ui", key[1].dimen)
+ end
 end
 
 return KeyboardUI
