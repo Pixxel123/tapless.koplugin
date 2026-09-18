@@ -28,4 +28,35 @@ local Tapless = WidgetContainer:extend{
     is_doc_only = false,
 }
 
+function Tapless:init()
+    if self.ui and self.ui.menu then
+        self.ui.menu:registerToMainMenu(self)
+    end
+end
+
+function Tapless:openDictionaryManager()
+    if replacement and replacement.taplessOpenDictionaryManager then
+        replacement.taplessOpenDictionaryManager()
+    else
+        logger.err("Tapless: dictionary manager is unavailable")
+    end
+end
+
+function Tapless:addToMainMenu(menu_items)
+    local plugin = self
+
+    menu_items.tapless_settings = {
+        text = "Tapless",
+        sorting_hint = "tools",
+        sub_item_table = {
+            {
+                text = "Manage dictionaries",
+                callback = function()
+                    plugin:openDictionaryManager()
+                end,
+            },
+        },
+    }
+end
+
 return Tapless

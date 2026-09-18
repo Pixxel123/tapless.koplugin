@@ -94,6 +94,13 @@ local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
 local RecognitionEngine = dofile(plugin_dir .. "/recognition_engine.lua")
     :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary)
 
+-- Expose dictionary management to the plugin's permanent main-menu entry.
+-- Passing nil as the keyboard deliberately clears any stale keyboard
+-- reference retained after a text dialog has closed.
+function VirtualKeyboard.taplessOpenDictionaryManager()
+    DictionaryManager:open(nil, plugin_dir, PersonalDictionary)
+end
+
 return dofile(plugin_dir .. "/koreader_adapter.lua"):new{
     input_session = InputSession,
     prefetch_controller = PrefetchController,
