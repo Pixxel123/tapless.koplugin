@@ -46,6 +46,7 @@ local Manager = {
     plugin_dir = nil,
     keyboard = nil,
     personal_dictionary = nil,
+    language_controller = nil,
     menu = nil,
     loading_message = nil,
     busy = false,
@@ -331,13 +332,28 @@ function Manager:_notify(text)
 end
 
 function Manager:_select(id)
-    if not self.keyboard or not self.keyboard._swypeSetDictionary then
+    if not self.language_controller then
         return
     end
+
     self:_closeMenu()
-    if not self.keyboard:_swypeSetDictionary(id) then
-        self:_notify("Cannot enable dictionary " .. id .. ".")
+    if not self.language_controller:selectDictionary(id, self.keyboard) then
+        self:_notify("Cannot select dictionary " .. id .. ".")
+        self:showMenu()
     end
+end
+
+function Manager:_setEnabled(id, enabled)
+    if not self.language_controller then
+        return
+    end
+
+    local ok, err = self.language_controller:setEnabled(
+        id, enabled, self.keyboard)
+    if not ok then
+        self:_notify(err or "Cannot change dictionary state.")
+    end
+    self:showMenu()
 end
 
 function Manager:_uninstall(id, name)
@@ -368,15 +384,27 @@ function Manager:_uninstall(id, name)
  text = "Uninstall dictionary " .. (name or id) .. "?" .. warning,
         ok_text = "Uninstall",
         ok_callback = function()
-            if self.keyboard and self.keyboard.swype_mvp_dictionary == id then
- if not self.keyboard:_swypeSetDictionary(replacement) then
- self:_notify("Cannot switch dictionaries before uninstalling.")
+            if self.language_controller then
+                if not self.language_controller:prepareRemoval(
+                        id, replacement, self.keyboard) then
+                    self:_notify(
+                        "Cannot switch dictionaries before uninstalling.")
+                    return
+                end
+            elseif self.keyboard
+                    and self.keyboard.swype_mvp_dictionary == id then
+                if not self.keyboard:_swypeSetDictionary(replacement) then
+                    self:_notify(
+                        "Cannot switch dictionaries before uninstalling.")
                     return
                 end
             end
 
             local removed = removeTree(path)
             if removed then
+                if self.language_controller then
+                    self.language_controller:onDictionaryRemoved(id)
+                end
                 self:_notify("Uninstalled dictionary: " .. (name or id))
             else
                 self:_notify("Failed to uninstall dictionary: " .. (name or id))
@@ -670,7 +698,7 @@ function Manager:showMenu()
         return left < right
     end)
     local buttons = {}
-    local action_width = Screen:scaleBySize(140)
+    local action_width = Screen:scaleBySize(105)
     if self.personal_dictionary then
         local language, profile = self:_personalContext()
         local personal_count = #self.personal_dictionary:list(language, profile)
@@ -686,7 +714,11 @@ function Manager:showMenu()
         local package = packages[id]
         local name = package and package.name or (info and info.name or id)
         if info then
-            local active = self.keyboard and self.keyboard.swype_mvp_dictionary == id
+            local active = self.language_controller
+                and self.language_controller:activeDictionary(self.keyboard)
+                    == id
+            local enabled = not self.language_controller
+                or self.language_controller:isEnabled(id)
             table.insert(buttons, {
                 {
                     text = active and "✓ " .. name or name,
@@ -694,10 +726,18 @@ function Manager:showMenu()
                     callback = function() self:_select(id) end,
                 },
                 {
- text = "Uninstall",
+                    text = enabled and "Disable" or "Enable",
                     width = action_width,
                     callback = function()
-                        self:_uninstall(id, package and package.name or info.name)
+                        self:_setEnabled(id, not enabled)
+                    end,
+                },
+                {
+                    text = "Uninstall",
+                    width = action_width,
+                    callback = function()
+                        self:_uninstall(
+                            id, package and package.name or info.name)
                     end,
                 },
             })

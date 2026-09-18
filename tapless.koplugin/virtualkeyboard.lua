@@ -74,8 +74,12 @@ local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
         settings = G_reader_settings,
         logger = logger,
         setting_key = "keyboard_swype_mvp_dictionary",
+        enabled_setting_key = "tapless_enabled_dictionaries",
+        setup_setting_key = "tapless_language_setup_complete",
         default_profile = Normalization.DEFAULT_PROFILE,
     }
+
+DictionaryManager.language_controller = DictionaryController
 
 dofile(plugin_dir .. "/key_adapter.lua")
     :new(Normalization, GestureRange):install(VirtualKey)

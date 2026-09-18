@@ -12,14 +12,191 @@ function DictionaryController:new(options)
         settings = assert(options.settings),
         logger = assert(options.logger),
         setting_key = assert(options.setting_key),
+        enabled_setting_key = assert(options.enabled_setting_key),
+        setup_setting_key = assert(options.setup_setting_key),
         default_profile = assert(options.default_profile),
     }, self)
 end
 
+function DictionaryController:_installed()
+    return self.manager:listInstalled(self.plugin_dir)
+end
+
+function DictionaryController:listEnabled()
+    local installed = self:_installed()
+    local configured = self.settings:readSetting(self.enabled_setting_key)
+
+    -- Existing users start with all installed dictionaries enabled.
+    if type(configured) ~= "table" then
+        return installed
+    end
+
+    local wanted = {}
+    for _, id in ipairs(configured) do
+        if type(id) == "string" then
+            wanted[id] = true
+        end
+    end
+
+    local enabled = {}
+    for _, info in ipairs(installed) do
+        if wanted[info.id] then
+            table.insert(enabled, info)
+        end
+    end
+
+    -- Recover safely if settings refer only to dictionaries that no longer
+    -- exist. The manager still prevents deliberately disabling the last one.
+    if #enabled == 0 and #installed > 0 then
+        table.insert(enabled, installed[1])
+        self.settings:saveSetting(
+            self.enabled_setting_key, { installed[1].id })
+    end
+
+    return enabled
+end
+
+function DictionaryController:isEnabled(id)
+    for _, info in ipairs(self:listEnabled()) do
+        if info.id == id then
+            return true
+        end
+    end
+    return false
+end
+
+function DictionaryController:activeDictionary(keyboard)
+    return keyboard and keyboard.swype_mvp_dictionary
+        or self.settings:readSetting(self.setting_key, "en")
+end
+
+function DictionaryController:setEnabled(id, enabled, keyboard)
+    if not self.manager:isDictionaryAvailable(id, self.plugin_dir) then
+        return false, "Dictionary is not installed."
+    end
+
+    local current = {}
+    for _, info in ipairs(self:listEnabled()) do
+        current[info.id] = true
+    end
+
+    if enabled then
+        current[id] = true
+    else
+        current[id] = nil
+    end
+
+    local result = {}
+    for _, info in ipairs(self:_installed()) do
+        if current[info.id] then
+            table.insert(result, info.id)
+        end
+    end
+
+    if #result == 0 then
+        return false, "At least one dictionary must remain enabled."
+    end
+
+    self.settings:saveSetting(self.enabled_setting_key, result)
+
+    if not enabled and self:activeDictionary(keyboard) == id then
+        if keyboard then
+            if not self:setDictionary(keyboard, result[1]) then
+                return false, "Cannot switch to another dictionary."
+            end
+        else
+            self.settings:saveSetting(self.setting_key, result[1])
+        end
+    end
+
+    return true
+end
+
+function DictionaryController:selectDictionary(id, keyboard)
+    if not self.manager:isDictionaryAvailable(id, self.plugin_dir) then
+        return false
+    end
+
+    if not self:isEnabled(id) then
+        local ok = self:setEnabled(id, true, keyboard)
+        if not ok then
+            return false
+        end
+    end
+
+    if keyboard then
+        return self:setDictionary(keyboard, id)
+    end
+
+    self.settings:saveSetting(self.setting_key, id)
+    return true
+end
+
+function DictionaryController:prepareRemoval(id, replacement, keyboard)
+    if self:activeDictionary(keyboard) ~= id then
+        return true
+    end
+
+    local target
+    for _, info in ipairs(self:listEnabled()) do
+        if info.id ~= id then
+            target = info.id
+            break
+        end
+    end
+
+    if not target then
+        local enabled = self:setEnabled(replacement, true, keyboard)
+        if not enabled then
+            return false
+        end
+        target = replacement
+    end
+
+    if keyboard then
+        return self:setDictionary(keyboard, target)
+    end
+
+    self.settings:saveSetting(self.setting_key, target)
+    return true
+end
+
+function DictionaryController:onDictionaryRemoved(id)
+    local enabled_ids = {}
+    for _, info in ipairs(self:listEnabled()) do
+        if info.id ~= id then
+            table.insert(enabled_ids, info.id)
+        end
+    end
+
+    local installed = self:_installed()
+    if #enabled_ids == 0 and #installed > 0 then
+        enabled_ids[1] = installed[1].id
+    end
+
+    self.settings:saveSetting(self.enabled_setting_key, enabled_ids)
+
+    local active = self.settings:readSetting(self.setting_key, "en")
+    local active_enabled = false
+    for _, id in ipairs(enabled_ids) do
+        if id == active then
+            active_enabled = true
+            break
+        end
+    end
+
+    if not active_enabled and enabled_ids[1] then
+        self.settings:saveSetting(self.setting_key, enabled_ids[1])
+    end
+end
+
 function DictionaryController:initialize(keyboard)
     local dictionary = self.settings:readSetting(self.setting_key, "en")
-    if not self.manager:isDictionaryAvailable(dictionary, self.plugin_dir) then
-        dictionary = "en"
+    if not self.manager:isDictionaryAvailable(dictionary, self.plugin_dir)
+            or not self:isEnabled(dictionary) then
+        local enabled = self:listEnabled()
+        dictionary = enabled[1] and enabled[1].id or "en"
+        self.settings:saveSetting(self.setting_key, dictionary)
     end
     keyboard.swype_mvp_dictionary = dictionary
     local descriptor = self.registry:get(dictionary, self.plugin_dir)
@@ -33,9 +210,9 @@ end
 
 function DictionaryController:toggle(keyboard)
     keyboard:_swypeCommitPendingContext()
-    local installed = self.manager:listInstalled(self.plugin_dir)
+    local installed = self:listEnabled()
     if #installed < 2 then
- keyboard:_swypeOpenDictionaryManager()
+        keyboard:_swypeOpenDictionaryManager()
         return
     end
     local current_index
