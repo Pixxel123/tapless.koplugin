@@ -235,11 +235,29 @@ function InputController:insertBestAndShowCandidates(
     return true
 end
 
+function InputController:tapTraceKey(keyboard, trace_info)
+    local point = trace_info.letter_points and trace_info.letter_points[1]
+    local _, key = keyboard:_swypeKeyAt(point)
+    if not key or not key.onTapSelect then
+        return false
+    end
+    self.logger.dbg("swype mvp short trace typed as tap", key.key)
+    key:onTapSelect()
+    return true
+end
+
 function InputController:finalizeSignature(keyboard, signature, trace_info)
     if not signature or #signature == 0 then
         return false
     end
     if #signature < 2 then
+        -- A finger that drifted while tapping only crosses one key. Type
+        -- that key as a tap instead of dropping it, but only once the finger
+        -- is lifted, not when a paused trace times out.
+        if trace_info and trace_info.released
+                and self:tapTraceKey(keyboard, trace_info) then
+            return true
+        end
         keyboard.swype_mvp_session:recordShortSignature(signature)
         keyboard:_swypeRefreshCandidateRow()
         return true

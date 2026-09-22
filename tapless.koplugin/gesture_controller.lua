@@ -84,7 +84,7 @@ function GestureController:addKeyCenter(keyboard, key)
     end
 end
 
-function GestureController:finalizeTrace(keyboard)
+function GestureController:finalizeTrace(keyboard, released)
     if not keyboard.swype_mvp_trace then
         return false
     end
@@ -95,6 +95,7 @@ function GestureController:finalizeTrace(keyboard)
         points = snapshot.points,
         observations = snapshot.observations,
         previous_word = keyboard:_swypeGetPreviousWord(),
+        released = released,
     }
     self:reset(keyboard, true)
     local finalized = keyboard:_swypeFinalizeSignature(
@@ -154,7 +155,7 @@ function GestureController:onPathRelease(keyboard, ges, source_key)
     if not keyboard.swype_mvp_trace then
         self:addKeyCenter(keyboard, source_key)
     end
-    return self:finalizeTrace(keyboard)
+    return self:finalizeTrace(keyboard, true)
 end
 
 function GestureController:onPanRelease(keyboard, ges)
@@ -177,7 +178,7 @@ function GestureController:onPanRelease(keyboard, ges)
         return false
     end
     self:addPoint(keyboard, ges and ges.pos)
-    return self:finalizeTrace(keyboard)
+    return self:finalizeTrace(keyboard, true)
 end
 
 return GestureController
