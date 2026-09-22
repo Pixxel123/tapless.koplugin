@@ -83,7 +83,18 @@ DictionaryManager.language_controller = DictionaryController
 
 local KeyAdapter = dofile(plugin_dir .. "/key_adapter.lua")
     :new(Normalization, GestureRange, G_reader_settings)
+-- Look this up before Tapless wraps VirtualKey.init.
+local VirtualKeyPopup = findUpvalue(VirtualKey.init, "VirtualKeyPopup")
 KeyAdapter:install(VirtualKey)
+
+dofile(plugin_dir .. "/concurrent_taps.lua").install{
+    input = Device.input,
+    gesture_detector = require("device/gesturedetector"),
+    ui_manager = UIManager,
+    geometry = Geom,
+    logger = logger,
+    widget_classes = { VirtualKeyboard, VirtualKeyPopup },
+}
 
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,

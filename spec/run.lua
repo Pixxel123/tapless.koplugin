@@ -9,6 +9,7 @@ T.plugin_dir = root .. "/tapless.koplugin"
 local specs = {
     "key_adapter_spec",
     "input_controller_spec",
+    "concurrent_taps_spec",
 }
 
 for _, name in ipairs(specs) do
