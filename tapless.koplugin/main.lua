@@ -190,6 +190,20 @@ function Tapless:addToMainMenu(menu_items)
                     G_reader_settings:flipNilOrFalse("tapless_space_cursor")
                 end,
             },
+            {
+                text = "Double space types a period",
+                help_text = "A second space right after a word, or a space "
+                    .. "right after a swiped word, becomes \". \". Not used "
+                    .. "on Chinese, Japanese, Korean or Vietnamese layouts.",
+                checked_func = function()
+                    return G_reader_settings:isTrue(
+                        "tapless_double_space_period")
+                end,
+                callback = function()
+                    G_reader_settings:flipNilOrFalse(
+                        "tapless_double_space_period")
+                end,
+            },
         },
     }
 end

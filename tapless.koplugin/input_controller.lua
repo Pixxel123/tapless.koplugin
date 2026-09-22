@@ -2,9 +2,12 @@ local InputController = {}
 InputController.__index = InputController
 local Utf8Proc = require("ffi/utf8proc")
 
+InputController.DOUBLE_SPACE_SETTING = "tapless_double_space_period"
+
 function InputController:new(context_model, normalization, logger, text_case,
-        personal_dictionary, dictionary_store, ui_manager)
+        personal_dictionary, dictionary_store, ui_manager, settings)
     return setmetatable({
+        settings = assert(settings),
         context_model = assert(context_model),
         normalization = assert(normalization),
         logger = assert(logger),
@@ -213,6 +216,7 @@ function InputController:selectCandidate(keyboard, candidate)
     self:learnContext(selection.pending.previous_word, candidate.word)
     selection.pending.context_committed = true
     keyboard.inputbox:addChars(selection.replacement)
+    self:_markSpace(keyboard)
     self:clearCandidateState(keyboard)
     keyboard:_swypeRefreshCandidateRow()
 end
@@ -230,6 +234,7 @@ function InputController:insertBestAndShowCandidates(
         signature, candidates, previous_word)
     self.logger.dbg("swype mvp best", signature, "=>", candidates[1].word)
     keyboard.inputbox:addChars(inserted)
+    self:_markSpace(keyboard)
     keyboard:_swypeRefreshCandidateRow()
     self:releaseOneShotShift(keyboard)
     return true
@@ -270,14 +275,51 @@ function InputController:finalizeSignature(keyboard, signature, trace_info)
     return true
 end
 
+-- Remember where a space typed by the keyboard ended, whether tapped or
+-- added after a swiped word, so a second space right after it can become
+-- a period.
+function InputController:_markSpace(keyboard)
+    keyboard.swype_mvp_space_charpos = keyboard.inputbox.charpos
+end
+
+function InputController:_takeDoubleSpace(keyboard, key)
+    local charpos = keyboard.swype_mvp_space_charpos
+    keyboard.swype_mvp_space_charpos = nil
+    if key ~= " " or not charpos
+            or not self.settings:isTrue(self.DOUBLE_SPACE_SETTING)
+            -- Input method layouts (Chinese, Japanese, Korean, Vietnamese)
+            -- use space themselves and have their own punctuation.
+            or keyboard.uwrap_func then
+        return false
+    end
+    local inputbox = keyboard.inputbox
+    if inputbox.charpos ~= charpos or inputbox:getChar(-1) ~= " " then
+        return false
+    end
+    local previous = inputbox:getChar(-2)
+    return previous ~= nil and not previous:match("^[%s%p]$")
+end
+
 function InputController:addChar(keyboard, key, keep_swype_candidates)
+    local period = self:_takeDoubleSpace(keyboard, key)
     self:commitPendingContext(keyboard)
+    if period then
+        -- Drop the swiped word's undo state: backspace must not remove
+        -- "word " from text that now ends in "word. ".
+        keep_swype_candidates = false
+        self:clearCandidateState(keyboard)
+        keyboard.inputbox:delChar()
+        key = ". "
+    end
     if not keep_swype_candidates
             and keyboard.swype_mvp_session:getCandidates() then
         self:clearCandidateRow(keyboard)
     end
     self.logger.dbg("add char", key)
     keyboard.inputbox:addChars(key)
+    if key == " " then
+        self:_markSpace(keyboard)
+    end
     local chars = self.normalization:splitChars(key or "")
     local last = chars[#chars]
     if last and self.normalization:normalizeChar(
@@ -291,6 +333,7 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
 end
 
 function InputController:delChar(keyboard)
+    keyboard.swype_mvp_space_charpos = nil
     if self:rejectLastInsert(keyboard) then
         return
     end
