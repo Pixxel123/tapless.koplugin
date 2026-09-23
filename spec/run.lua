@@ -15,6 +15,7 @@ local specs = {
     "stray_touches_spec",
     "dictionary_controller_spec",
     "blocked_words_spec",
+    "keyboard_ui_spec",
 }
 
 for _, name in ipairs(specs) do

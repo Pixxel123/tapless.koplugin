@@ -1,4 +1,9 @@
-local KeyboardUI = {}
+local KeyboardUI = {
+    -- The suggestion row's words change with quick partial refreshes,
+    -- which leave faint ghosts of earlier words on e-ink. After this many
+    -- changes the whole row is refreshed once with a flash.
+    ROW_CLEANUP_EVERY = 6,
+}
 KeyboardUI.__index = KeyboardUI
 
 function KeyboardUI:new(options)
@@ -94,7 +99,7 @@ function KeyboardUI:refreshCandidateRow(keyboard, refresh_type, only_index)
     if not keyboard.swype_mvp_candidate_keys then
         keyboard:addKeys()
     end
-    self.candidate_row:refresh{
+    local changed = self.candidate_row:refresh{
         keys = keyboard.swype_mvp_candidate_keys,
         candidates = keyboard.swype_mvp_session:getCandidates(),
         personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
@@ -102,6 +107,23 @@ function KeyboardUI:refreshCandidateRow(keyboard, refresh_type, only_index)
         only_index = only_index,
         UIManager = self.ui_manager,
     }
+    if not changed then
+        return
+    end
+    keyboard.swype_mvp_row_changes = (keyboard.swype_mvp_row_changes or 0) + 1
+    if keyboard.swype_mvp_row_changes >= self.ROW_CLEANUP_EVERY then
+        keyboard.swype_mvp_row_changes = 0
+        local region
+        for _, key in ipairs(keyboard.swype_mvp_candidate_keys) do
+            local dimen = key[1] and key[1].dimen
+            if dimen then
+                region = region and region:combine(dimen) or dimen
+            end
+        end
+        if region then
+            self.ui_manager:setDirty(nil, "flashui", region)
+        end
+    end
 end
 
 function KeyboardUI:openDictionaryManager(keyboard)

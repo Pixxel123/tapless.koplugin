@@ -72,8 +72,10 @@ function CandidateRow:create(options)
     }
 end
 
+-- Returns true when a slot's word changed.
 function CandidateRow:refresh(options)
     local candidates = options.candidates or {}
+    local any_changed = false
     for index, virtual_key in ipairs(options.keys or {}) do
         if not options.only_index or index == options.only_index then
  local word = slotText(index, candidates, options.personal_offer)
@@ -83,6 +85,7 @@ function CandidateRow:refresh(options)
             if changed and virtual_key.swype_mvp_label_widget then
                 virtual_key.swype_mvp_label_widget:setText(word)
             end
+            any_changed = any_changed or changed
             if changed and virtual_key[1] and virtual_key[1].dimen then
                 options.UIManager:widgetRepaint(
                     virtual_key[1], virtual_key[1].dimen.x,
@@ -92,6 +95,7 @@ function CandidateRow:refresh(options)
             end
         end
     end
+    return any_changed
 end
 
 return CandidateRow
