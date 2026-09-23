@@ -183,6 +183,29 @@ it("does not borrow a letter from a key the path went straight through",
     T.eq(words(results), "")
 end)
 
+it("ranks rare short words below words that fit as well", function()
+    local scoring = T.load("scoring"):new(T.normalization)
+    local function ranked(signature, freq)
+        local _, score = scoring:finishEntryScore("bvcq",
+            { gesture_signature = signature, freq = freq }, 2, {}, nil, 0)
+        return score
+    end
+    -- A rare three-letter word pays extra; a rare longer word does not.
+    T.truthy(ranked("bcq", 2500) - ranked("bcq", 2700) > 10000)
+    T.eq(ranked("bvcq", 2500) - ranked("bvcq", 2700), 200)
+end)
+
+it("counts doubled letters when deciding a word is short", function()
+    local scoring = T.load("scoring"):new(T.normalization)
+    local function ranked(freq)
+        local _, score = scoring:finishEntryScore("mor", {
+            signature = "moor", gesture_signature = "mor", freq = freq,
+        }, 2, {}, nil, 0)
+        return score
+    end
+    T.eq(ranked(2500) - ranked(2700), 200, "moor is four letters")
+end)
+
 it("limits letters from neighbouring keys in the final alignment too",
         function()
     local layout = newLayout()

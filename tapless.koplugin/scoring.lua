@@ -1,6 +1,11 @@
 local Scoring = {
     EDIT_DISTANCE_MAX = 2,
     SCORE_UNIT = 3000,
+    -- Short words this rare are mostly abbreviations and fragments nobody
+    -- swipes, but they can explain a long swipe by skipping most of it.
+    RARE_SHORT_LENGTH = 3,
+    RARE_SHORT_FREQ = 2600,
+    RARE_SHORT_COST = 4,
     REPEAT_BONUS = 4500,
     -- Cost of a word whose first letter is not the key the swipe started
     -- on, when the trace crosses that letter later.
@@ -562,8 +567,16 @@ function Scoring:finishEntryScore(signature, entry, score, matched_positions,
             end
         end
     end
+    local rarity = 0
+    -- The word's own length: the gesture signature collapses doubled
+    -- letters, which would make "moor" look like a three-letter word.
+    if #(entry.signature or candidate) <= self.RARE_SHORT_LENGTH
+            and (entry.freq or 0) < self.RARE_SHORT_FREQ then
+        rarity = self.RARE_SHORT_COST * self.SCORE_UNIT
+    end
     return score,
-        score * self.SCORE_UNIT - (entry.freq or 0) - (context_bonus or 0)
+        score * self.SCORE_UNIT - (entry.freq or 0) + rarity
+            - (context_bonus or 0)
             - math.floor(repeat_bonus * self.REPEAT_BONUS)
 end
 
