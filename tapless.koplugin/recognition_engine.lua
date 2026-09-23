@@ -5,12 +5,13 @@ local DYNAMIC_CANDIDATE_LIMIT = 40
 local GEOMETRY_CANDIDATE_LIMIT = 12
 
 function RecognitionEngine:new(dictionary_store, scoring, geometry_reranker,
-        personal_dictionary)
+        personal_dictionary, blocked_words)
     return setmetatable({
         dictionary_store = assert(dictionary_store),
         scoring = assert(scoring),
         geometry_reranker = geometry_reranker,
         personal_dictionary = personal_dictionary,
+        blocked_words = blocked_words,
     }, self)
 end
 
@@ -33,9 +34,13 @@ function RecognitionEngine:pickCandidates(options)
     local max_spatial = math.max(6, #signature)
     local shortlist, seen = {}, {}
 
+    local blocked_words = self.blocked_words
     local function scan(entries, allow_endpoint_mismatch, allow_start_mismatch)
         for _, entry in ipairs(entries or {}) do
-            if not entry.lang or entry.lang == dictionary or entry.lang == data_lang then
+            if (not entry.lang or entry.lang == dictionary
+                    or entry.lang == data_lang)
+                    and not (blocked_words
+                        and blocked_words:contains(dictionary, entry.word)) then
                 local context_bonus = options.context_bonus
                     and options.context_bonus(
                         trace_info and trace_info.previous_word, entry.word) or 0

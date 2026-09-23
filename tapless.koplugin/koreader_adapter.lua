@@ -316,6 +316,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
         adapter.input_controller:selectCandidate(self, candidate)
     end
 
+    function VirtualKeyboard:_swypeBlockCandidate(candidate)
+        return adapter.input_controller:blockCandidate(self, candidate)
+    end
+
     function VirtualKeyboard:_swypeAddPersonalWord()
         return adapter.input_controller:addPersonalWord(self)
     end

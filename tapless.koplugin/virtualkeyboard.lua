@@ -1,6 +1,7 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local BottomContainer = require("ui/widget/container/bottomcontainer")
 local CenterContainer = require("ui/widget/container/centercontainer")
+local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
@@ -47,6 +48,7 @@ local InputSession = dofile(plugin_dir .. "/input_session.lua")
 local Normalization = dofile(plugin_dir .. "/normalization.lua"):new(plugin_dir)
 local PersonalDictionary = dofile(plugin_dir .. "/personal_dictionary.lua")
     :new(Normalization, DictionaryIndex)
+local BlockedWords = dofile(plugin_dir .. "/blocked_words.lua"):new()
 local KeyboardGeometry = dofile(plugin_dir .. "/keyboard_geometry.lua")
     :new(Normalization)
 local PrefetchController = dofile(plugin_dir .. "/prefetch_controller.lua")
@@ -62,7 +64,8 @@ local ContextModel = dofile(plugin_dir .. "/context_model.lua")
 local TextCase = dofile(plugin_dir .. "/text_case.lua"):new(Normalization)
 local InputController = dofile(plugin_dir .. "/input_controller.lua")
     :new(ContextModel, Normalization, logger, TextCase,
-        PersonalDictionary, DictionaryStore, UIManager, G_reader_settings)
+        PersonalDictionary, DictionaryStore, UIManager, G_reader_settings,
+        BlockedWords)
 local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
     :new{
         plugin_dir = plugin_dir,
@@ -80,6 +83,7 @@ local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
     }
 
 DictionaryManager.language_controller = DictionaryController
+DictionaryManager.blocked_words = BlockedWords
 
 local KeyAdapter = dofile(plugin_dir .. "/key_adapter.lua")
     :new(Normalization, GestureRange, G_reader_settings)
@@ -117,6 +121,7 @@ local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
     dictionary_manager = DictionaryManager,
     personal_dictionary = PersonalDictionary,
+    confirm_box = ConfirmBox,
     plugin_dir = plugin_dir,
     horizontal_group = HorizontalGroup,
     virtual_key = VirtualKey,
@@ -125,7 +130,8 @@ local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     screen = Screen,
 }
 local RecognitionEngine = dofile(plugin_dir .. "/recognition_engine.lua")
-    :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary)
+    :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary,
+        BlockedWords)
 
 -- Expose dictionary management to the plugin's permanent main-menu entry.
 -- Passing nil as the keyboard deliberately clears any stale keyboard

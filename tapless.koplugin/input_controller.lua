@@ -5,8 +5,10 @@ local Utf8Proc = require("ffi/utf8proc")
 InputController.DOUBLE_SPACE_SETTING = "tapless_double_space_period"
 
 function InputController:new(context_model, normalization, logger, text_case,
-        personal_dictionary, dictionary_store, ui_manager, settings)
+        personal_dictionary, dictionary_store, ui_manager, settings,
+        blocked_words)
     return setmetatable({
+        blocked_words = blocked_words,
         settings = assert(settings),
         context_model = assert(context_model),
         normalization = assert(normalization),
@@ -117,6 +119,10 @@ function InputController:addPersonalWord(keyboard)
         self.logger.warn("Tapless: cannot add personal word", err)
         return false
     end
+    if self.blocked_words then
+        self.blocked_words:remove(
+            keyboard.swype_mvp_dictionary or "en", offer.word)
+    end
     offer.added = true
     keyboard:_swypeRefreshCandidateRow()
     return true
@@ -219,6 +225,34 @@ function InputController:selectCandidate(keyboard, candidate)
     self:_markSpace(keyboard)
     self:clearCandidateState(keyboard)
     keyboard:_swypeRefreshCandidateRow()
+end
+
+-- Never suggests the word again in this language. The word a swipe just
+-- typed is replaced by the next suggestion; any other suggestion is taken
+-- off the suggestion row.
+function InputController:blockCandidate(keyboard, candidate)
+    if not self.blocked_words or not candidate then
+        return false
+    end
+    local ok, err = self.blocked_words:add(
+        keyboard.swype_mvp_dictionary or "en", candidate.word)
+    if ok == nil then
+        self.logger.warn("Tapless: cannot block word", err)
+        return false
+    end
+    local session = keyboard.swype_mvp_session
+    local remaining = session:removeCandidate(candidate)
+    local last_insert = session:getLastInsert()
+    if last_insert and last_insert.word == candidate.word then
+        if remaining[1] then
+            self:selectCandidate(keyboard, remaining[1])
+        else
+            self:rejectLastInsert(keyboard)
+        end
+    else
+        keyboard:_swypeRefreshCandidateRow()
+    end
+    return true
 end
 
 function InputController:insertBestAndShowCandidates(

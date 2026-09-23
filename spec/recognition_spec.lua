@@ -70,12 +70,12 @@ end
 -- signature: letters the finger crossed. start: where the finger landed.
 -- intents: how deliberately each letter was crossed (turns score high).
 -- turns: how far the path turned on each letter's key, in radians.
-local function recognize(words, signature, start, intents, turns)
+local function recognize(words, signature, start, intents, turns, blocked)
     local layout = newLayout()
     local geometry = T.load("keyboard_geometry"):new(T.normalization)
     local scoring = T.load("scoring"):new(T.normalization)
     local engine = T.load("recognition_engine"):new(newStore(words), scoring,
-        T.load("geometry_reranker"):new())
+        T.load("geometry_reranker"):new(), nil, blocked)
     local points, observations = { start }, {}
     for index = 1, #signature do
         if index > 1 then
@@ -230,4 +230,20 @@ it("limits letters from neighbouring keys in the final alignment too",
     score = scoring:dynamicMatchScore("wihne", chars, false, points,
         points[#points], key_centers, observations, false, near)
     T.truthy(score < 1000, "score " .. score)
+end)
+
+it("never suggests a blocked word", function()
+    local words = { { "was", 6000 }, { "wqs", 3000 } }
+    T.eq(recognize(words, "wqas", { x = 150, y = 50 })[1].word, "was")
+    local blocked = {
+        contains = function(_, language, word)
+            return language == "en" and word == "was"
+        end,
+    }
+    local results = recognize(words, "wqas", { x = 150, y = 50 }, nil, nil,
+        blocked)
+    T.eq(results[1].word, "wqs")
+    for _, result in ipairs(results) do
+        T.truthy(result.word ~= "was", "blocked word suggested")
+    end
 end)

@@ -14,6 +14,20 @@ function InputSession:getCandidates()
     return self.candidates
 end
 
+-- Takes a candidate off the suggestions; returns the ones left.
+function InputSession:removeCandidate(candidate)
+    local remaining = {}
+    for _, other in ipairs(self.candidates or {}) do
+        if other ~= candidate and other.word ~= candidate.word then
+            remaining[#remaining + 1] = other
+        end
+    end
+    if self.candidates then
+        self.candidates = remaining
+    end
+    return remaining
+end
+
 function InputSession:getLastInsert()
     return self.last_insert
 end

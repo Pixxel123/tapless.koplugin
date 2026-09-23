@@ -36,7 +36,16 @@ function CandidateRow:create(options)
         }
         virtual_key.is_swype_candidate = true
         virtual_key.swipe_callback = nil
- virtual_key.hold_callback = nil
+        -- Holding a suggestion offers to block it; the lift that ends the
+        -- hold must not also pick it.
+        virtual_key.hold_callback = function()
+            local offer = options.get_personal_offer
+                and options.get_personal_offer()
+            if not offer and options.on_hold_candidate
+                    and options.on_hold_candidate(index) then
+                virtual_key.ignore_key_release = true
+            end
+        end
         virtual_key.callback = function()
                 local offer = options.get_personal_offer
                     and options.get_personal_offer()

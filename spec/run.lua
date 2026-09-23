@@ -14,6 +14,7 @@ local specs = {
     "trace_collector_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
+    "blocked_words_spec",
 }
 
 for _, name in ipairs(specs) do

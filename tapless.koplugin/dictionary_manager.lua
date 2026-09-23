@@ -46,6 +46,7 @@ local Manager = {
     plugin_dir = nil,
     keyboard = nil,
     personal_dictionary = nil,
+    blocked_words = nil,
     language_controller = nil,
     menu = nil,
     language_setup_menu = nil,
@@ -444,6 +445,59 @@ function Manager:_removePersonalWord(word)
     })
 end
 
+function Manager:showBlockedWords()
+    self:_closeMenu()
+    local language = self:_personalContext()
+    local words = self.blocked_words:list(language)
+    local buttons = {}
+    local action_width = Screen:scaleBySize(140)
+    for _, word in ipairs(words) do
+        table.insert(buttons, {
+            {
+                text = word,
+                align = "left",
+                enabled = false,
+                callback = function() end,
+            },
+            {
+                text = "Unblock",
+                width = action_width,
+                callback = function()
+                    local removed, err = self.blocked_words:remove(
+                        language, word)
+                    if removed == nil then
+                        self:_notify("Failed to unblock:\n"
+                            .. tostring(err or word))
+                    end
+                    self:showBlockedWords()
+                end,
+            },
+        })
+    end
+    if #words == 0 then
+        table.insert(buttons, {
+            {
+                text = "No blocked words. Hold a suggestion to block it.",
+                enabled = false,
+                callback = function() end,
+            },
+        })
+    end
+    table.insert(buttons, {
+        {
+            text = "Back",
+            callback = function() self:showMenu() end,
+        },
+    })
+    self.menu = ButtonDialog:new{
+        title = "Tapless: Blocked words (" .. string.upper(language) .. ")",
+        width_factor = 0.95,
+        rows_per_page = 8,
+        buttons = buttons,
+    }
+    UIManager:show(self.menu)
+end
+
 function Manager:showPersonalWords()
     self:_closeMenu()
     if not self.personal_dictionary then
@@ -711,6 +765,16 @@ function Manager:showMenu()
             {
                 text = "Personal words (" .. personal_count .. ")",
                 callback = function() self:showPersonalWords() end,
+            },
+        })
+    end
+    if self.blocked_words then
+        local language = self:_personalContext()
+        local blocked_count = #self.blocked_words:list(language)
+        table.insert(buttons, {
+            {
+                text = "Blocked words (" .. blocked_count .. ")",
+                callback = function() self:showBlockedWords() end,
             },
         })
     end

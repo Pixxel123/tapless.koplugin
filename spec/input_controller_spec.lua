@@ -147,3 +147,74 @@ it("works after non-Latin letters", function()
     local controller = newController(ON)
     T.eq(typeKeys(controller, newTypingKeyboard(), "д", "а", " ", " "), "да. ")
 end)
+
+-- A text box and keyboard around a real input session, for blocking.
+local function blockingSetup()
+    local InputController = T.load("input_controller")
+    local blocked, unblocked = {}, {}
+    local blocked_words = {
+        add = function(_, language, word)
+            table.insert(blocked, language .. ":" .. word)
+            return true
+        end,
+        remove = function(_, language, word)
+            table.insert(unblocked, language .. ":" .. word)
+            return true
+        end,
+    }
+    local personal = {
+        add = function() return true end,
+    }
+    local controller = InputController:new(
+        { learn = function() end, commit = function() end },
+        T.normalization, { dbg = function() end, warn = function() end }, {},
+        personal, {}, { scheduleIn = function() end },
+        { isTrue = function() return false end }, blocked_words)
+    local inputbox = { text = "" }
+    function inputbox:addChars(chars)
+        self.text = self.text .. chars
+        self.charpos = #self.text + 1
+    end
+    function inputbox:delChar()
+        self.text = self.text:sub(1, -2)
+        self.charpos = #self.text + 1
+    end
+    function inputbox:getText() return self.text end
+    local keyboard = {
+        inputbox = inputbox,
+        swype_mvp_dictionary = "en",
+        swype_mvp_session = T.load("input_session"):new(),
+        _swypeReset = function() end,
+        _swypeRefreshCandidateRow = function() end,
+    }
+    local candidates = { { word = "was" }, { word = "wax" } }
+    inputbox:addChars(keyboard.swype_mvp_session:recordInsert(
+        "wqas", candidates, nil))
+    return controller, keyboard, candidates, blocked, unblocked
+end
+
+it("replaces the swiped word with the next suggestion when blocked",
+        function()
+    local controller, keyboard, candidates, blocked = blockingSetup()
+    T.eq(keyboard.inputbox.text, "was ")
+    T.truthy(controller:blockCandidate(keyboard, candidates[1]))
+    T.eq(blocked[1], "en:was")
+    T.eq(keyboard.inputbox.text, "wax ")
+end)
+
+it("drops a blocked suggestion from the row", function()
+    local controller, keyboard, candidates, blocked = blockingSetup()
+    T.truthy(controller:blockCandidate(keyboard, candidates[2]))
+    T.eq(blocked[1], "en:wax")
+    T.eq(keyboard.inputbox.text, "was ", "typed word kept")
+    local shown = keyboard.swype_mvp_session:getCandidates()
+    T.eq(#shown, 1)
+    T.eq(shown[1].word, "was")
+end)
+
+it("unblocks a word added to personal words", function()
+    local controller, keyboard, _, _, unblocked = blockingSetup()
+    keyboard.swype_mvp_session:setPersonalOffer({ word = "bq" })
+    T.truthy(controller:addPersonalWord(keyboard))
+    T.eq(unblocked[1], "en:bq")
+end)

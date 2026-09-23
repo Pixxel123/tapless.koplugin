@@ -6,6 +6,7 @@ function KeyboardUI:new(options)
         candidate_row = assert(options.candidate_row),
         dictionary_manager = assert(options.dictionary_manager),
         personal_dictionary = assert(options.personal_dictionary),
+        confirm_box = assert(options.confirm_box),
         plugin_dir = assert(options.plugin_dir),
         horizontal_group = assert(options.horizontal_group),
         virtual_key = assert(options.virtual_key),
@@ -40,6 +41,23 @@ function KeyboardUI:createCandidateRow(keyboard, options)
         end,
         on_add_personal_word = function()
             keyboard:_swypeAddPersonalWord()
+        end,
+        on_hold_candidate = function(index)
+            local candidates =
+                keyboard.swype_mvp_session:getCandidates() or {}
+            local candidate = candidates[index]
+            if not candidate then
+                return false
+            end
+            self.ui_manager:show(self.confirm_box:new{
+                text = "Never suggest \""
+                    .. (candidate.output_word or candidate.word) .. "\"?",
+                ok_text = "Block",
+                ok_callback = function()
+                    keyboard:_swypeBlockCandidate(candidate)
+                end,
+            })
+            return true
         end,
     }
 end
