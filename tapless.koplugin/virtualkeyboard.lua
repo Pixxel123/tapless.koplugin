@@ -96,6 +96,23 @@ dofile(plugin_dir .. "/concurrent_taps.lua").install{
     widget_classes = { VirtualKeyboard, VirtualKeyPopup },
 }
 
+-- After concurrent_taps: both look up Contact in newContact's upvalues.
+dofile(plugin_dir .. "/stray_touches.lua").install{
+    gesture_detector = require("device/gesturedetector"),
+    logger = logger,
+    swiping = function()
+        local stack = UIManager._window_stack or {}
+        for index = #stack, 1, -1 do
+            local widget = stack[index].widget
+            if not widget.toast then
+                return widget.isSwypeMvpEnabled ~= nil
+                    and widget:isSwypeMvpEnabled()
+            end
+        end
+        return false
+    end,
+}
+
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
     dictionary_manager = DictionaryManager,

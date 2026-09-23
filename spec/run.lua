@@ -10,6 +10,7 @@ local specs = {
     "key_adapter_spec",
     "input_controller_spec",
     "concurrent_taps_spec",
+    "stray_touches_spec",
 }
 
 for _, name in ipairs(specs) do
