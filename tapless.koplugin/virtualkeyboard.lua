@@ -81,8 +81,9 @@ local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
 
 DictionaryManager.language_controller = DictionaryController
 
-dofile(plugin_dir .. "/key_adapter.lua")
-    :new(Normalization, GestureRange, G_reader_settings):install(VirtualKey)
+local KeyAdapter = dofile(plugin_dir .. "/key_adapter.lua")
+    :new(Normalization, GestureRange, G_reader_settings)
+KeyAdapter:install(VirtualKey)
 
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
@@ -113,6 +114,7 @@ return dofile(plugin_dir .. "/koreader_adapter.lua"):new{
     input_controller = InputController,
     keyboard_geometry = KeyboardGeometry,
     keyboard_ui = KeyboardUI,
+    key_adapter = KeyAdapter,
     recognition_engine = RecognitionEngine,
     gesture_controller = GestureController,
     trace_renderer = TraceRenderer,

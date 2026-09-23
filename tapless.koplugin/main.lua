@@ -59,6 +59,21 @@ function Tapless:addToMainMenu(menu_items)
                 text = "Keyboard size",
                 sub_item_table = {
                     {
+                        text = "Same as KOReader",
+                        help_text = "Follows KOReader's compact keyboard "
+                            .. "setting, and KOReader's key text size when "
+                            .. "the text size is Auto.",
+                        radio = true,
+                        checked_func = function()
+                            return G_reader_settings:readSetting(
+                                "tapless_keyboard_size") == nil
+                        end,
+                        callback = function()
+                            G_reader_settings:delSetting(
+                                "tapless_keyboard_size")
+                        end,
+                    },
+                    {
                         text = "Extra compact",
                         radio = true,
                         checked_func = function()
@@ -89,7 +104,7 @@ function Tapless:addToMainMenu(menu_items)
                         checked_func = function()
                             local value = G_reader_settings:readSetting(
                                 "tapless_keyboard_size")
-                            return value == "normal" or value == nil
+                            return value == "normal"
                         end,
                         callback = function()
                             G_reader_settings:saveSetting(

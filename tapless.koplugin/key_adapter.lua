@@ -9,6 +9,33 @@ function KeyAdapter:new(normalization, gesture_range, settings)
     }, self)
 end
 
+-- Key height before scaling, and key font size when the text size is
+-- automatic, for each Tapless keyboard size.
+local KEY_HEIGHTS = {
+    extra_compact = 40, compact = 48, normal = 64, large = 80,
+}
+local KEY_FONT_SIZES = {
+    extra_compact = 18, compact = 20, normal = 22, large = 26,
+}
+
+-- Until a Tapless keyboard size is chosen, the keyboard follows KOReader's
+-- own compact keyboard setting.
+function KeyAdapter:keyHeight()
+    local size = self.settings:readSetting("tapless_keyboard_size")
+    return KEY_HEIGHTS[size]
+        or (self.settings:isTrue("keyboard_key_compact") and 48 or 64)
+end
+
+-- The key font size, or nil to keep KOReader's own.
+function KeyAdapter:keyFontSize()
+    local font_setting = self.settings:readSetting(
+        "tapless_keyboard_font_size", "auto")
+    if font_setting == 18 or font_setting == 22 or font_setting == 26 then
+        return font_setting
+    end
+    return KEY_FONT_SIZES[self.settings:readSetting("tapless_keyboard_size")]
+end
+
 function KeyAdapter:isTextKey(key)
     return key and not key.is_swype_candidate
         and #self.normalization:normalizeText(
@@ -28,40 +55,25 @@ function KeyAdapter:install(VirtualKey)
     local adapter = self
 
     VirtualKey.init = function(key)
-        local font_setting = adapter.settings:readSetting(
-            "tapless_keyboard_font_size", "auto")
-        local tapless_size = font_setting
-
-        if font_setting == "auto" then
-            local keyboard_size = adapter.settings:readSetting(
-                "tapless_keyboard_size", "normal")
-            if keyboard_size == "extra_compact" then
-                tapless_size = 18
-            elseif keyboard_size == "compact" then
-                tapless_size = 20
-            elseif keyboard_size == "large" then
-                tapless_size = 26
-            else
-                tapless_size = 22
+        local tapless_size = adapter:keyFontSize()
+        local ok, err
+        if tapless_size then
+            -- VirtualKey reads KOReader's global font-size setting during
+            -- init. Override that read in memory only, then restore it
+            -- immediately so disabling Tapless leaves the stock keyboard
+            -- setting untouched.
+            local original_read_setting = adapter.settings.readSetting
+            adapter.settings.readSetting = function(settings, setting, default)
+                if setting == "keyboard_key_font_size" then
+                    return tapless_size
+                end
+                return original_read_setting(settings, setting, default)
             end
-        elseif tapless_size ~= 18 and tapless_size ~= 22
-                and tapless_size ~= 26 then
-            tapless_size = 22
+            ok, err = pcall(original_init, key)
+            adapter.settings.readSetting = original_read_setting
+        else
+            ok, err = pcall(original_init, key)
         end
-
-        -- VirtualKey reads KOReader's global font-size setting during init.
-        -- Override that read in memory only, then restore it immediately so
-        -- disabling Tapless leaves the stock keyboard setting untouched.
-        local original_read_setting = adapter.settings.readSetting
-        adapter.settings.readSetting = function(settings, setting, default)
-            if setting == "keyboard_key_font_size" then
-                return tapless_size
-            end
-            return original_read_setting(settings, setting, default)
-        end
-
-        local ok, err = pcall(original_init, key)
-        adapter.settings.readSetting = original_read_setting
 
         if not ok then
             error(err)
