@@ -119,6 +119,30 @@ it("uses the Tapless key font size only while building a key", function()
         "global setting untouched afterwards")
 end)
 
+it("uses KOReader's key font size until a Tapless size is chosen",
+        function()
+    local calls, VirtualKey = setup{ keyboard_key_font_size = 30 }
+    local key = VirtualKey:new{ key = "a", keyboard = newKeyboard(calls) }
+    T.eq(key.font_size, 30)
+    calls, VirtualKey = setup{ keyboard_key_font_size = 30,
+        tapless_keyboard_font_size = 18 }
+    key = VirtualKey:new{ key = "a", keyboard = newKeyboard(calls) }
+    T.eq(key.font_size, 18, "a chosen Tapless font size wins")
+end)
+
+it("uses KOReader's compact keyboard setting until a size is chosen",
+        function()
+    local _, _, adapter = setup()
+    T.eq(adapter:keyHeight(), 64)
+    _, _, adapter = setup{ keyboard_key_compact = true }
+    T.eq(adapter:keyHeight(), 48)
+    _, _, adapter = setup{ keyboard_key_compact = true,
+        tapless_keyboard_size = "extra_compact" }
+    T.eq(adapter:keyHeight(), 40, "a chosen Tapless size wins")
+    _, _, adapter = setup{ tapless_keyboard_size = "large" }
+    T.eq(adapter:keyHeight(), 80)
+end)
+
 it("takes letter swipes back from a patch that replaces onSwipeKey", function()
     local calls, VirtualKey, adapter = setup()
     local keyboard = newKeyboard(calls)
