@@ -65,7 +65,7 @@ local TextCase = dofile(plugin_dir .. "/text_case.lua"):new(Normalization)
 local InputController = dofile(plugin_dir .. "/input_controller.lua")
     :new(ContextModel, Normalization, logger, TextCase,
         PersonalDictionary, DictionaryStore, UIManager, G_reader_settings,
-        BlockedWords)
+        BlockedWords, time)
 local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
     :new{
         plugin_dir = plugin_dir,

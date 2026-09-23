@@ -1,7 +1,7 @@
 local T = require("helper")
 local it = T.it
 
-local function newController(settings)
+local function newController(settings, clock)
     local InputController = T.load("input_controller")
     local logger = { dbg = function() end, warn = function() end }
     local ui_manager = { scheduleIn = function() end }
@@ -10,12 +10,16 @@ local function newController(settings)
     return InputController:new(context_model, T.normalization, logger, {}, {},
         {}, ui_manager, {
             isTrue = function(_, name) return settings[name] == true end,
+        }, nil, clock and {
+            now = function() return clock.now end,
+            ms = function(ms) return ms * 1000 end,
         })
 end
 
 local function newKeyboard(state)
     local key = {
         key = "a",
+        dimen = { w = 100, h = 80 },
         onTapSelect = function() state.tapped = (state.tapped or 0) + 1 end,
     }
     return {
@@ -74,6 +78,51 @@ local function newInputBox()
     end
     return box
 end
+
+-- A two-letter trace starting at time start (microseconds), moving dx px.
+local function slide(start, dx)
+    local points = {
+        { x = 90, y = 40, time = start },
+        { x = 90 + dx, y = 40, time = start + 30000 },
+    }
+    return { letter_points = points, points = points, released = true }
+end
+
+local function tapThenSlide(gap_ms, dx, tapped_key)
+    local clock = { now = 1000000 }
+    local controller = newController(nil, clock)
+    local state = {}
+    local keyboard = newKeyboard(state)
+    keyboard.inputbox = newInputBox()
+    keyboard.inputbox.getText = keyboard.inputbox.text
+    keyboard.swype_mvp_session = T.load("input_session"):new()
+    keyboard._swypePickCandidates = function()
+        state.picked = true
+        return {}
+    end
+    controller:addChar(keyboard, tapped_key or "q")
+    controller:finalizeSignature(keyboard, "ab",
+        slide(clock.now + gap_ms * 1000, dx))
+    return state
+end
+
+it("types a short slide right after a tap as a tap", function()
+    local state = tapThenSlide(200, 40)
+    T.eq(state.tapped, 1)
+    T.eq(state.picked, nil)
+end)
+
+it("keeps a short slide long after a tap as a swipe", function()
+    T.eq(tapThenSlide(900, 40).picked, true)
+end)
+
+it("keeps a swipe of a key's width right after a tap", function()
+    T.eq(tapThenSlide(200, 100).picked, true)
+end)
+
+it("does not count a tapped space as tapping", function()
+    T.eq(tapThenSlide(200, 40, " ").picked, true)
+end)
 
 local function newTypingKeyboard()
     local InputSession = T.load("input_session")

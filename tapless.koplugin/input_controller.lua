@@ -6,9 +6,10 @@ InputController.DOUBLE_SPACE_SETTING = "tapless_double_space_period"
 
 function InputController:new(context_model, normalization, logger, text_case,
         personal_dictionary, dictionary_store, ui_manager, settings,
-        blocked_words)
+        blocked_words, time_api)
     return setmetatable({
         blocked_words = blocked_words,
+        time = time_api,
         settings = assert(settings),
         context_model = assert(context_model),
         normalization = assert(normalization),
@@ -288,6 +289,36 @@ function InputController:tapTraceKey(keyboard, trace_info)
     return true
 end
 
+-- Right after a letter is tapped, a slide shorter than most of a key is a
+-- tap whose finger slipped onto the next key, not a swipe.
+local TAP_COOLDOWN_MS = 500
+local SLIP_KEY_FRACTION = 0.6
+
+function InputController:_slippedTap(keyboard, trace_info)
+    local tapped = keyboard.swype_mvp_last_letter_tap
+    local points = trace_info and trace_info.points
+    local first = points and points[1]
+    if not (self.time and tapped and trace_info.released and first
+            and first.time) then
+        return false
+    end
+    if first.time - tapped > self.time.ms(TAP_COOLDOWN_MS) then
+        return false
+    end
+    local _, key = keyboard:_swypeKeyAt(first)
+    local width = key and key.dimen and key.dimen.w
+    if not width then
+        return false
+    end
+    local length = 0
+    for index = 2, #points do
+        local dx = points[index].x - points[index - 1].x
+        local dy = points[index].y - points[index - 1].y
+        length = length + math.sqrt(dx * dx + dy * dy)
+    end
+    return length < width * SLIP_KEY_FRACTION
+end
+
 function InputController:finalizeSignature(keyboard, signature, trace_info)
     if not signature or #signature == 0 then
         return false
@@ -302,6 +333,10 @@ function InputController:finalizeSignature(keyboard, signature, trace_info)
         end
         keyboard.swype_mvp_session:recordShortSignature(signature)
         keyboard:_swypeRefreshCandidateRow()
+        return true
+    end
+    if self:_slippedTap(keyboard, trace_info)
+            and self:tapTraceKey(keyboard, trace_info) then
         return true
     end
     local candidates = keyboard:_swypePickCandidates(
@@ -362,6 +397,11 @@ function InputController:_takeDoubleSpace(keyboard, key)
 end
 
 function InputController:addChar(keyboard, key, keep_swype_candidates)
+    if self.time and (self.normalization:normalizeChar(
+                key, keyboard.swype_mvp_normalization_profile)
+            or key:match("^%d$")) then
+        keyboard.swype_mvp_last_letter_tap = self.time.now()
+    end
     local pending_space = self:_takePendingSpace(keyboard)
     local keep_pending_space = false
     if pending_space then
