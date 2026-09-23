@@ -12,6 +12,7 @@ local specs = {
     "concurrent_taps_spec",
     "recognition_spec",
     "recorder_spec",
+    "replay_spec",
     "trace_collector_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
