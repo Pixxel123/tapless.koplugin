@@ -17,6 +17,7 @@ local specs = {
     "blocked_words_spec",
     "keyboard_ui_spec",
     "candidate_row_spec",
+    "dictionary_registry_spec",
 }
 
 for _, name in ipairs(specs) do

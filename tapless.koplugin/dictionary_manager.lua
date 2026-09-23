@@ -404,6 +404,7 @@ function Manager:_uninstall(id, name)
             end
 
             local removed = removeTree(path)
+            DictionaryRegistry:invalidate()
             if removed then
                 if self.language_controller then
                     self.language_controller:onDictionaryRemoved(id)
@@ -663,6 +664,7 @@ function Manager:_installPackage(package, zip_path)
         return nil, "Cannot install dictionary"
     end
     removeTree(backup)
+    DictionaryRegistry:invalidate()
     return true
 end
 

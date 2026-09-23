@@ -17,6 +17,11 @@ local REQUIRED_FILES = {
 
 local Registry = {}
 
+-- Listing the dictionaries reads every manifest from disk, which is slow
+-- on e-readers, and it is needed often. The list is kept until one of the
+-- dictionary folders changes or invalidate() is called.
+local list_cache = {}
+
 local function isDirectory(path)
     return path and lfs.attributes(path, "mode") == "directory"
 end
@@ -125,13 +130,15 @@ function Registry:get(id, plugin_dir)
     if not self:isSafeId(id) then
         return nil
     end
-    local external = self:externalRoot() .. "/" .. id
-    local descriptor = self:_readDescriptor(external, id, false)
-    if descriptor then
-        return descriptor
+    for _, descriptor in ipairs(self:list(plugin_dir)) do
+        if descriptor.id == id then
+            return descriptor
+        end
     end
-    local bundled = (plugin_dir or DEFAULT_PLUGIN_DIR) .. "/dictionaries/" .. id
-    return self:_readDescriptor(bundled, id, true)
+end
+
+function Registry:invalidate()
+    list_cache = {}
 end
 
 function Registry:isAvailable(id, plugin_dir)
@@ -140,8 +147,24 @@ end
 
 function Registry:list(plugin_dir)
     plugin_dir = plugin_dir or DEFAULT_PLUGIN_DIR
-    local found = {}
     local external_root = self:externalRoot()
+    local bundled_root = plugin_dir .. "/dictionaries"
+    local stamp = tostring(lfs.attributes(external_root, "modification"))
+        .. "|" .. tostring(lfs.attributes(bundled_root, "modification"))
+    local cached = list_cache[plugin_dir]
+    if not cached or cached.stamp ~= stamp then
+        cached = { stamp = stamp, list = self:_scan(external_root, bundled_root) }
+        list_cache[plugin_dir] = cached
+    end
+    local copy = {}
+    for index, descriptor in ipairs(cached.list) do
+        copy[index] = descriptor
+    end
+    return copy
+end
+
+function Registry:_scan(external_root, bundled_root)
+    local found = {}
     if isDirectory(external_root) then
         for id in lfs.dir(external_root) do
             if self:isSafeId(id) then
@@ -153,7 +176,6 @@ function Registry:list(plugin_dir)
             end
         end
     end
-    local bundled_root = plugin_dir .. "/dictionaries"
     if isDirectory(bundled_root) then
         for id in lfs.dir(bundled_root) do
             if self:isSafeId(id) and not found[id] then
