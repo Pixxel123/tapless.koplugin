@@ -117,9 +117,12 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 end
  if is_space then
  self.swype_mvp_language_key = virtual_key
+ -- With one language, holding space just types a space
+ -- when the finger lifts.
  virtual_key.hold_callback = function()
+ if self:_swypeToggleDictionary() then
  virtual_key.ignore_key_release = true
- self:_swypeToggleDictionary()
+ end
  end
  virtual_key.hold_cb_is_popup = false
  end
@@ -276,7 +279,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:_swypeToggleDictionary()
-        adapter.dictionary_controller:toggle(self)
+        return adapter.dictionary_controller:toggle(self)
     end
 
     function VirtualKeyboard:_swypeSetDictionary(dictionary)

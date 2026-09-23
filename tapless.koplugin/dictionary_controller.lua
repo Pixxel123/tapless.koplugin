@@ -329,13 +329,14 @@ function DictionaryController:label(keyboard)
     return self.manager:shortLabel(keyboard.swype_mvp_dictionary)
 end
 
+-- Switches to the next enabled language. Returns false, leaving the
+-- keyboard alone, when there is no other language to switch to.
 function DictionaryController:toggle(keyboard)
-    keyboard:_swypeCommitPendingContext()
     local installed = self:listEnabled()
     if #installed < 2 then
-        keyboard:_swypeOpenDictionaryManager()
-        return
+        return false
     end
+    keyboard:_swypeCommitPendingContext()
     local current_index
     for index, info in ipairs(installed) do
         if info.id == keyboard.swype_mvp_dictionary then
@@ -345,6 +346,7 @@ function DictionaryController:toggle(keyboard)
     end
     local next_info = installed[(current_index or 0) % #installed + 1]
     keyboard:_swypeSetDictionary(next_info.id)
+    return true
 end
 
 function DictionaryController:setDictionary(keyboard, dictionary)
