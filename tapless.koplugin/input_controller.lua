@@ -340,7 +340,7 @@ function InputController:finalizeSignature(keyboard, signature, trace_info)
         return true
     end
     local candidates = keyboard:_swypePickCandidates(
- signature, 4, trace_info)
+        signature, 4, trace_info)
     self:insertBestAndShowCandidates(
         keyboard, signature, candidates,
         trace_info and trace_info.previous_word)

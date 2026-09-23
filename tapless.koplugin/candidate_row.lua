@@ -2,14 +2,14 @@ local CandidateRow = {}
 
 local function slotText(index, candidates, personal_offer)
     if personal_offer then
- if index == 1 then
+        if index == 1 then
             return personal_offer.word
- elseif index == 2 then
+        elseif index == 2 then
             return personal_offer.added and "✓" or "+"
         end
         return " "
     end
- local candidate = candidates[index]
+    local candidate = candidates[index]
     return candidate and (candidate.output_word or candidate.word) or " "
 end
 
@@ -26,7 +26,7 @@ function CandidateRow:create(options)
             - 2 * options.padding) / slot_count)
 
     for index = 1, slot_count do
- local word = slotText(index, candidates, options.personal_offer)
+        local word = slotText(index, candidates, options.personal_offer)
         -- Marked while built, so that empty slots showing " " are not
         -- taken for the space bar.
         local virtual_key = options.VirtualKey:new{
@@ -53,14 +53,14 @@ function CandidateRow:create(options)
             end
         end
         virtual_key.callback = function()
-                local offer = options.get_personal_offer
-                    and options.get_personal_offer()
-                if offer then
- if index == 2 then
-                        options.on_add_personal_word()
-                    end
-                else
- options.on_select_candidate(index)
+            local offer = options.get_personal_offer
+                and options.get_personal_offer()
+            if offer then
+                if index == 2 then
+                    options.on_add_personal_word()
+                end
+            else
+                options.on_select_candidate(index)
             end
         end
         table.insert(keys, virtual_key)
@@ -84,7 +84,7 @@ function CandidateRow:refresh(options)
     local any_changed = false
     for index, virtual_key in ipairs(options.keys or {}) do
         if not options.only_index or index == options.only_index then
- local word = slotText(index, candidates, options.personal_offer)
+            local word = slotText(index, candidates, options.personal_offer)
             local changed = virtual_key.label ~= word
             virtual_key.key = word
             virtual_key.label = word

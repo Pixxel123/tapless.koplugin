@@ -20,10 +20,7 @@ local function setup(changes)
         candidate_row = {
             refresh = function() return table.remove(changes, 1) end,
         },
-        dictionary_manager = {},
-        personal_dictionary = {},
         confirm_box = {},
-        plugin_dir = ".",
         horizontal_group = {},
         virtual_key = {},
         ui_manager = {

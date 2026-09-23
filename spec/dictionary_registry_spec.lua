@@ -36,9 +36,10 @@ package.preload["libs/libkoreader-lfs"] = function()
     end
     return lfs
 end
-package.preload["datastorage"] = function()
-    return { getDataDir = function() return ROOT .. "/data" end }
-end
+-- Set directly: another spec may already have loaded a stand-in.
+package.loaded["datastorage"] = {
+    getDataDir = function() return ROOT .. "/data" end,
+}
 
 local function addDictionary(folder, id, modified)
     local path = folder .. "/" .. id

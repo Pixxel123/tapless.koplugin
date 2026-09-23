@@ -97,10 +97,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
                     key = label
                     label = ""
                 end
- local is_space = key == " "
- if is_space then
- alt_label = self:_swypeDictionaryLabel()
- end
+                local is_space = key == " "
+                if is_space then
+                    alt_label = self:_swypeDictionaryLabel()
+                end
                 local virtual_key = adapter.virtual_key:new{
                     key = key,
                     key_chars = key_chars,
@@ -115,17 +115,17 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 if not virtual_key.key_chars and label ~= "" then
                     virtual_key.swipe_callback = nil
                 end
- if is_space then
- self.swype_mvp_language_key = virtual_key
- -- With one language, holding space just types a space
- -- when the finger lifts.
- virtual_key.hold_callback = function()
- if self:_swypeToggleDictionary() then
- virtual_key.ignore_key_release = true
- end
- end
- virtual_key.hold_cb_is_popup = false
- end
+                if is_space then
+                    self.swype_mvp_language_key = virtual_key
+                    -- With one language, holding space just types a space
+                    -- when the finger lifts.
+                    virtual_key.hold_callback = function()
+                        if self:_swypeToggleDictionary() then
+                            virtual_key.ignore_key_release = true
+                        end
+                    end
+                    virtual_key.hold_cb_is_popup = false
+                end
                 table.insert(horizontal_group, virtual_key)
                 table.insert(layout_row, virtual_key)
                 if key_index ~= #self.KEYS[row_index] then
@@ -297,13 +297,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
             self, refresh_type, only_index)
     end
 
- function VirtualKeyboard:_swypeRefreshLanguageIndicator(refresh_type)
- adapter.keyboard_ui:refreshLanguageIndicator(self, refresh_type)
- end
+    function VirtualKeyboard:_swypeRefreshLanguageIndicator(refresh_type)
+        adapter.keyboard_ui:refreshLanguageIndicator(self, refresh_type)
+    end
 
- function VirtualKeyboard:_swypeOpenDictionaryManager()
- adapter.keyboard_ui:openDictionaryManager(self)
- end
 
     function VirtualKeyboard:_swypeClearCandidateState(keep_debug)
         adapter.input_controller:clearCandidateState(self, keep_debug)

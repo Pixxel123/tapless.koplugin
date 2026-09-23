@@ -1,6 +1,8 @@
 local DataStorage = require("datastorage")
 local Utf8Proc = require("ffi/utf8proc")
 local util = require("util")
+local WordListFile = dofile((debug.getinfo(1, "S").source
+    :match("^@(.+)/[^/]+%.lua$") or ".") .. "/word_list_file.lua")
 
 local PersonalDictionary = {}
 PersonalDictionary.__index = PersonalDictionary
@@ -21,8 +23,7 @@ function PersonalDictionary:new(normalization, dictionary_index, root)
 end
 
 function PersonalDictionary:_validLanguage(language)
-    return type(language) == "string"
-        and language:match("^[a-z][a-z0-9-]*$") ~= nil
+    return WordListFile.validLanguage(language)
 end
 
 function PersonalDictionary:_prepareWord(word, profile)
@@ -118,28 +119,9 @@ function PersonalDictionary:_ensure(language, profile)
 end
 
 function PersonalDictionary:_save(words, language)
-    util.makePath(self.root)
-    local path = self:_path(language)
-    local temporary = path .. ".tmp"
-    local file = io.open(temporary, "wb")
-    if not file then
-        return nil, "Cannot write personal dictionary"
-    end
-    file:write("# Tapless personal dictionary v1\n")
-    local sorted = {}
-    for word in pairs(words) do
-        table.insert(sorted, word)
-    end
-    table.sort(sorted)
-    for _, word in ipairs(sorted) do
-        file:write(word, "\n")
-    end
-    file:close()
-    if not os.rename(temporary, path) then
-        os.remove(temporary)
-        return nil, "Cannot replace personal dictionary"
-    end
-    return true
+    return WordListFile.save(self:_path(language),
+        "# Tapless personal dictionary v1", words,
+        function() util.makePath(self.root) end, "personal dictionary")
 end
 
 function PersonalDictionary:prepareWord(word, profile)

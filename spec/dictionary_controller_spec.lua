@@ -36,9 +36,6 @@ local function newKeyboard(dictionary)
         _swypeCommitPendingContext = function()
             calls.committed = true
         end,
-        _swypeOpenDictionaryManager = function()
-            calls.manager = true
-        end,
         _swypeSetDictionary = function(_, id)
             calls.set = id
             return true
@@ -49,7 +46,6 @@ end
 it("leaves the keyboard alone when there is no other language", function()
     local keyboard, calls = newKeyboard("en")
     T.eq(newController({ { id = "en" } }):toggle(keyboard), false)
-    T.eq(calls.manager, nil)
     T.eq(calls.set, nil)
     T.eq(calls.committed, nil)
 end)

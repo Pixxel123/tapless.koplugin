@@ -1,5 +1,7 @@
 -- Words the user asked never to be suggested, one file per language.
 local Utf8Proc = require("ffi/utf8proc")
+local WordListFile = dofile((debug.getinfo(1, "S").source
+    :match("^@(.+)/[^/]+%.lua$") or ".") .. "/word_list_file.lua")
 
 local BlockedWords = {}
 BlockedWords.__index = BlockedWords
@@ -16,10 +18,7 @@ function BlockedWords:new(root, make_path)
     }, self)
 end
 
-local function validLanguage(language)
-    return type(language) == "string"
-        and language:match("^[a-z][a-z0-9-]*$") ~= nil
-end
+local validLanguage = WordListFile.validLanguage
 
 local function key(word)
     if type(word) ~= "string" or word == "" or word:find("[\t\r\n]") then
@@ -53,23 +52,9 @@ function BlockedWords:_words(language)
 end
 
 function BlockedWords:_save(language, words)
-    self.make_path(self.root)
-    local path = self:_path(language)
-    local temporary = path .. ".tmp"
-    local file = io.open(temporary, "wb")
-    if not file then
-        return nil, "Cannot write blocked words"
-    end
-    file:write("# Tapless blocked words v1\n")
-    for _, word in ipairs(self:_sorted(words)) do
-        file:write(word, "\n")
-    end
-    file:close()
-    if not os.rename(temporary, path) then
-        os.remove(temporary)
-        return nil, "Cannot replace blocked words"
-    end
-    return true
+    return WordListFile.save(self:_path(language),
+        "# Tapless blocked words v1", words,
+        function() self.make_path(self.root) end, "blocked words")
 end
 
 function BlockedWords:_sorted(words)

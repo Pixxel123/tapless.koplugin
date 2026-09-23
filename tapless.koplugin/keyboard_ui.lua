@@ -9,10 +9,7 @@ KeyboardUI.__index = KeyboardUI
 function KeyboardUI:new(options)
     return setmetatable({
         candidate_row = assert(options.candidate_row),
-        dictionary_manager = assert(options.dictionary_manager),
-        personal_dictionary = assert(options.personal_dictionary),
         confirm_box = assert(options.confirm_box),
-        plugin_dir = assert(options.plugin_dir),
         horizontal_group = assert(options.horizontal_group),
         virtual_key = assert(options.virtual_key),
         ui_manager = assert(options.ui_manager),
@@ -128,31 +125,25 @@ function KeyboardUI:refreshCandidateRow(keyboard, refresh_type, only_index)
     end
 end
 
-function KeyboardUI:openDictionaryManager(keyboard)
- self.dictionary_manager:open(
- keyboard, self.plugin_dir, self.personal_dictionary)
- keyboard:onClose()
-end
-
 function KeyboardUI:refreshLanguageIndicator(keyboard, refresh_type)
- local key = keyboard.swype_mvp_language_key
- if not key then
- return
- end
+    local key = keyboard.swype_mvp_language_key
+    if not key then
+        return
+    end
 
- local label = keyboard:_swypeDictionaryLabel()
- key.alt_label = label
+    local label = keyboard:_swypeDictionaryLabel()
+    key.alt_label = label
 
- if key.swype_mvp_alt_label_widget then
- key.swype_mvp_alt_label_widget:setText(label)
- end
+    if key.swype_mvp_alt_label_widget then
+        key.swype_mvp_alt_label_widget:setText(label)
+    end
 
- if key[1] and key[1].dimen then
- self.ui_manager:widgetRepaint(
- key[1], key[1].dimen.x, key[1].dimen.y)
- self.ui_manager:setDirty(
- nil, refresh_type or "ui", key[1].dimen)
- end
+    if key[1] and key[1].dimen then
+        self.ui_manager:widgetRepaint(
+            key[1], key[1].dimen.x, key[1].dimen.y)
+        self.ui_manager:setDirty(
+            nil, refresh_type or "ui", key[1].dimen)
+    end
 end
 
 return KeyboardUI

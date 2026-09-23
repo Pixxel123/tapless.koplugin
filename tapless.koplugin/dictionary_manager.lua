@@ -361,30 +361,31 @@ end
 
 function Manager:_uninstall(id, name)
     local path, bundled = installedPath(id, self.plugin_dir)
- if not path then
- self:_notify("This dictionary is not installed.")
+    if not path then
+        self:_notify("This dictionary is not installed.")
         return
     end
 
- local replacement
- for _, info in ipairs(self:listInstalled(self.plugin_dir)) do
- if info.id ~= id then
- replacement = replacement or info.id
- end
- end
+    local replacement
+    for _, info in ipairs(self:listInstalled(self.plugin_dir)) do
+        if info.id ~= id then
+            replacement = replacement or info.id
+        end
+    end
 
- if not replacement then
- self:_notify("Install another dictionary before removing the last one.")
- return
- end
+    if not replacement then
+        self:_notify(
+            "Install another dictionary before removing the last one.")
+        return
+    end
 
- local warning = bundled
- and "\n\nThis removes files from the plugin folder. "
- .. "A plugin update may restore them."
- or "\n\nThe downloaded dictionary files will be removed."
+    local warning = bundled
+        and "\n\nThis removes files from the plugin folder. "
+            .. "A plugin update may restore them."
+        or "\n\nThe downloaded dictionary files will be removed."
 
     UIManager:show(ConfirmBox:new{
- text = "Uninstall dictionary " .. (name or id) .. "?" .. warning,
+        text = "Uninstall dictionary " .. (name or id) .. "?" .. warning,
         ok_text = "Uninstall",
         ok_callback = function()
             if self.language_controller then

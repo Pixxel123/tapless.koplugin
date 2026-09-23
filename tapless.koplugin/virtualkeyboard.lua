@@ -24,17 +24,7 @@ if VirtualKeyboard._tapless_adapter_installed then
     return VirtualKeyboard
 end
 
-local function findUpvalue(fn, wanted)
-    for index = 1, 100 do
-        local name, value = debug.getupvalue(fn, index)
-        if not name then
-            break
-        end
-        if name == wanted then
-            return value
-        end
-    end
-end
+local findUpvalue = dofile(plugin_dir .. "/find_upvalue.lua")
 
 local VirtualKey = assert(findUpvalue(VirtualKeyboard.addKeys, "VirtualKey"),
     "Tapless: incompatible KOReader VirtualKeyboard.addKeys")
@@ -119,10 +109,7 @@ dofile(plugin_dir .. "/stray_touches.lua").install{
 
 local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     candidate_row = CandidateRow,
-    dictionary_manager = DictionaryManager,
-    personal_dictionary = PersonalDictionary,
     confirm_box = ConfirmBox,
-    plugin_dir = plugin_dir,
     horizontal_group = HorizontalGroup,
     virtual_key = VirtualKey,
     ui_manager = UIManager,

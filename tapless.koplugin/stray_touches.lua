@@ -5,17 +5,8 @@
 
 local StrayTouches = {}
 
-local function findUpvalue(fn, wanted)
-    for index = 1, 100 do
-        local name, value = debug.getupvalue(fn, index)
-        if not name then
-            break
-        end
-        if name == wanted then
-            return value
-        end
-    end
-end
+local findUpvalue = dofile((debug.getinfo(1, "S").source
+    :match("^@(.+)/[^/]+%.lua$") or ".") .. "/find_upvalue.lua")
 
 -- options: gesture_detector, logger, and swiping() telling whether touches
 -- currently go to a keyboard that takes swipes.
