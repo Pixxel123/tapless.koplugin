@@ -830,11 +830,21 @@ function Manager:_showLanguageSetupMenu()
         width_factor = 0.9,
         rows_per_page = 8,
         buttons = buttons,
+        -- Tapping outside closes the dialog without choosing; forget it so
+        -- that setup is offered again the next time the keyboard opens.
+        tap_close_callback = function()
+            self.language_setup_menu = nil
+        end,
     }
     UIManager:show(self.language_setup_menu)
 end
 
 function Manager:showLanguageSetup(keyboard, plugin_dir, selected)
+    local menu = self.language_setup_menu
+    if menu and UIManager.isWidgetShown
+            and not UIManager:isWidgetShown(menu) then
+        self.language_setup_menu = nil
+    end
     if self.language_setup_menu then
         return
     end
