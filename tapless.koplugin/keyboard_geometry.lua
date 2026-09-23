@@ -1,4 +1,8 @@
-local KeyboardGeometry = {}
+local KeyboardGeometry = {
+    -- How far past a key's edge a swipe may start and still be taken as
+    -- aimed at that key, as a fraction of the key's width or height.
+    START_REACH = 0.25,
+}
 KeyboardGeometry.__index = KeyboardGeometry
 
 function KeyboardGeometry:new(normalization)
@@ -28,7 +32,20 @@ function KeyboardGeometry:keyAt(layout, pos, profile)
     end
 end
 
-function KeyboardGeometry:endpointLetters(layout, pos, exact_last, profile)
+-- Distance from pos to the nearest point of a key, in key widths across
+-- and key heights down.
+local function gapTo(dimen, pos)
+    local dx = math.max(dimen.x - pos.x, 0, pos.x - (dimen.x + dimen.w))
+    local dy = math.max(dimen.y - pos.y, 0, pos.y - (dimen.y + dimen.h))
+    dx = dx / math.max(1, dimen.w)
+    dy = dy / math.max(1, dimen.h)
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+-- exact_last first, then the letters of the two keys nearest pos. With
+-- reach, only keys less than that fraction of a key away from pos count.
+function KeyboardGeometry:endpointLetters(layout, pos, exact_last, profile,
+        reach)
     local candidates = {}
     local seen = {}
     if exact_last and #exact_last == 1 then
@@ -41,7 +58,9 @@ function KeyboardGeometry:endpointLetters(layout, pos, exact_last, profile)
     local nearby = {}
     for _, row in ipairs(layout) do
         for _, key in ipairs(row) do
-            if key.dimen and not key.is_swype_candidate then
+            if key.dimen and not key.is_swype_candidate
+                    and (not reach
+                        or gapTo(key.dimen, pos) < reach) then
                 local normalized = self.normalization:normalizeText(
                     key.key or key.label, profile)
                 if #normalized == 1 and not seen[normalized] then
@@ -65,6 +84,12 @@ function KeyboardGeometry:endpointLetters(layout, pos, exact_last, profile)
         seen[nearby[index].letter] = true
     end
     return candidates
+end
+
+-- The key a swipe started on, then any neighbouring key it started close to.
+function KeyboardGeometry:startLetters(layout, pos, exact_first, profile)
+    return self:endpointLetters(layout, pos, exact_first, profile,
+        self.START_REACH)
 end
 
 function KeyboardGeometry:keyCenters(layout, profile)

@@ -2,6 +2,11 @@ local Scoring = {
     EDIT_DISTANCE_MAX = 2,
     SCORE_UNIT = 3000,
     REPEAT_BONUS = 4500,
+    -- Cost of a word whose first letter is not the key the swipe started
+    -- on, when the trace crosses that letter later.
+    FIRST_LETTER_COST = 6,
+    -- Cost of taking the key the swipe started on as a neighbouring key.
+    START_MISMATCH_COST = 1,
 }
 Scoring.__index = Scoring
 
@@ -79,7 +84,7 @@ end
 
 function Scoring:matchScore(candidate, trace_chars, next_positions,
         allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
-        observations)
+        observations, allow_start_mismatch)
     local trace_len = #trace_chars
     local trace_end = trace_len + 1
     local candidate_len = #candidate
@@ -88,6 +93,7 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
     local first_match
     local last_match
     local endpoint_mismatch = false
+    local start_mismatch = false
     local matched_positions = {}
     local geometry_total = 0
     local geometry_measured = 0
@@ -97,6 +103,13 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
         local code = byte - ASCII_A + 1
         local row = next_positions and next_positions[pos]
         local found = row and row[code] or nil
+        -- The swipe started on a neighbouring key: take the first trace
+        -- letter as this word's first letter.
+        if i == 1 and allow_start_mismatch and candidate_len > 1
+                and trace_len > 1 and string.byte(trace_chars[1]) ~= byte then
+            found = 1
+            start_mismatch = true
+        end
         if (not found or found == trace_end) and allow_endpoint_mismatch
                 and i == candidate_len and matched == candidate_len - 1
                 and trace_len > 0 then
@@ -164,8 +177,10 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
             + skippedWeight((last_match or trace_len) + 1, trace_len) * 2
         local first_code = string.byte(candidate, 1) - ASCII_A + 1
         local last_code = string.byte(candidate, candidate_len) - ASCII_A + 1
-        if string.byte(trace_chars[1]) - ASCII_A + 1 ~= first_code then
-            score = score + 6
+        if start_mismatch then
+            score = score + self.START_MISMATCH_COST
+        elseif string.byte(trace_chars[1]) - ASCII_A + 1 ~= first_code then
+            score = score + self.FIRST_LETTER_COST
         end
         if not endpoint_mismatch
                 and string.byte(trace_chars[trace_len]) - ASCII_A + 1
@@ -185,7 +200,7 @@ end
 
 function Scoring:dynamicMatchScore(candidate, trace_chars,
         allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
-        observations)
+        observations, allow_start_mismatch)
     local trace_len = #trace_chars
     local candidate_len = #candidate
     if trace_len == 0 or candidate_len == 0 then
@@ -214,6 +229,13 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
             + weights[trace_position] * 3
     end
 
+    -- A word that does not start with the first trace letter pays for it
+    -- here, so the alignment can weigh taking the first trace letter as a
+    -- neighbouring key against skipping it.
+    local first_trace_code = string.byte(trace_chars[1]) - ASCII_A + 1
+    local first_code = string.byte(candidate, 1) - ASCII_A + 1
+    local first_letter_cost = first_trace_code ~= first_code
+        and self.FIRST_LETTER_COST or 0
     local parents = {}
     local final_matches = {}
     for candidate_position = 1, candidate_len do
@@ -231,9 +253,18 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
                 and candidate_position == candidate_len
                 and trace_position == trace_len
                 and trace_code ~= candidate_code
+            local start_mismatch = allow_start_mismatch
+                and candidate_position == 1 and trace_position == 1
+                and candidate_len > 1 and trace_len > 1
+                and trace_code ~= candidate_code
             local matched = infinity
-            if trace_code == candidate_code or endpoint_mismatch then
+            if trace_code == candidate_code or endpoint_mismatch
+                    or start_mismatch then
                 matched = previous[trace_position - 1]
+                if candidate_position == 1 then
+                    matched = matched + (start_mismatch
+                        and self.START_MISMATCH_COST or first_letter_cost)
+                end
                 if matched < infinity and trace_letter_points and key_centers then
                     local point = endpoint_mismatch and endpoint_pos
                         or trace_letter_points[trace_position]
@@ -291,13 +322,9 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
         return 1000 + candidate_position * 20, false, matched_positions
     end
 
-    local first_code = string.byte(candidate, 1) - ASCII_A + 1
     local last_code = string.byte(candidate, candidate_len) - ASCII_A + 1
     local endpoint_mismatch = string.byte(trace_chars[best_end])
         - ASCII_A + 1 ~= last_code
-    if string.byte(trace_chars[1]) - ASCII_A + 1 ~= first_code then
-        best_score = best_score + 6
-    end
     if endpoint_mismatch then
         best_score = best_score + 5
     elseif string.byte(trace_chars[trace_len]) - ASCII_A + 1 ~= last_code then
@@ -373,7 +400,8 @@ function Scoring:finishEntryScore(signature, entry, score, matched_positions,
 end
 
 function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
-        trace_info, key_centers, allow_endpoint_mismatch, context_bonus)
+        trace_info, key_centers, allow_endpoint_mismatch, context_bonus,
+        allow_start_mismatch)
     local candidate = entry.gesture_signature or entry.signature
     local score, _, matched_positions = self:matchScore(
         candidate,
@@ -383,13 +411,15 @@ function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
         trace_info and trace_info.letter_points,
         trace_info and trace_info.endpoint_pos,
         key_centers,
-        trace_info and trace_info.observations)
+        trace_info and trace_info.observations,
+        allow_start_mismatch)
     return self:finishEntryScore(signature, entry, score, matched_positions,
         trace_info, context_bonus)
 end
 
 function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
-        key_centers, allow_endpoint_mismatch, context_bonus)
+        key_centers, allow_endpoint_mismatch, context_bonus,
+        allow_start_mismatch)
     local candidate = entry.gesture_signature or entry.signature
     local score, _, matched_positions = self:dynamicMatchScore(
         candidate,
@@ -398,7 +428,8 @@ function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         trace_info and trace_info.letter_points,
         trace_info and trace_info.endpoint_pos,
         key_centers,
-        trace_info and trace_info.observations)
+        trace_info and trace_info.observations,
+        allow_start_mismatch)
     return self:finishEntryScore(signature, entry, score, matched_positions,
         trace_info, context_bonus)
 end

@@ -10,6 +10,7 @@ local specs = {
     "key_adapter_spec",
     "input_controller_spec",
     "concurrent_taps_spec",
+    "recognition_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
 }

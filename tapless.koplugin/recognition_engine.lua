@@ -31,7 +31,7 @@ function RecognitionEngine:pickCandidates(options)
     local max_spatial = math.max(6, #signature)
     local shortlist, seen = {}, {}
 
-    local function scan(entries, allow_endpoint_mismatch)
+    local function scan(entries, allow_endpoint_mismatch, allow_start_mismatch)
         for _, entry in ipairs(entries or {}) do
             if not entry.lang or entry.lang == dictionary or entry.lang == data_lang then
                 local context_bonus = options.context_bonus
@@ -45,12 +45,14 @@ function RecognitionEngine:pickCandidates(options)
                     trace_info,
                     key_centers,
                     allow_endpoint_mismatch,
-                    context_bonus)
+                    context_bonus,
+                    allow_start_mismatch)
                 if spatial_score <= max_spatial then
                     self.scoring:addCandidate(shortlist, seen, entry,
                         spatial_score, ranked_score,
                         math.max(limit, DYNAMIC_CANDIDATE_LIMIT), {
                             allow_endpoint_mismatch = allow_endpoint_mismatch,
+                            allow_start_mismatch = allow_start_mismatch,
                             context_bonus = context_bonus,
                             entry = entry,
                         })
@@ -91,6 +93,26 @@ function RecognitionEngine:pickCandidates(options)
         end
     end
 
+    -- The swipe may have started on a key next to the intended one.
+    if #signature >= 3 and trace_info and options.start_letters then
+        local start_letters = options.start_letters(first)
+        for index = 2, #start_letters do
+            local start_first = start_letters[index]
+            local personal_start_bucket = self.personal_dictionary
+                and self.personal_dictionary:getBucket(
+                    start_first, last, dictionary,
+                    options.normalization_profile)
+            scan(personal_start_bucket and personal_start_bucket.entries,
+                false, true)
+            local start_bucket = self.dictionary_store:loadBucket(
+                start_first, last, dictionary)
+            for length = 2, math.min(14, #signature) do
+                scan(start_bucket and start_bucket.by_gesture_length[length],
+                    false, true)
+            end
+        end
+    end
+
     if #shortlist == 0 then
         local popular_entries = self.dictionary_store:loadPopularWords(
             first, dictionary)
@@ -112,7 +134,8 @@ function RecognitionEngine:pickCandidates(options)
                 trace_info,
                 key_centers,
                 metadata.allow_endpoint_mismatch,
-                metadata.context_bonus)
+                metadata.context_bonus,
+                metadata.allow_start_mismatch)
             if spatial_score <= max_spatial then
                 self.scoring:addCandidate(results, final_seen, entry,
                     spatial_score, ranked_score,
