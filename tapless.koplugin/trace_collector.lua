@@ -1,5 +1,10 @@
 local TraceCollector = {}
 
+-- Turns smaller than this, in radians, are left out when looking for a
+-- scribble: they are the finger or the sensor wobbling, not a change of
+-- direction.
+local MIN_SCRIBBLE_TURN = math.pi / 4
+
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
@@ -22,6 +27,7 @@ local function buildObservations(trace)
             min_distance = math.huge,
             path_length = 0,
             signed_turn = 0,
+            total_turn = 0,
             point_count = 0,
         }
     end
@@ -75,6 +81,9 @@ local function buildObservations(trace)
                     local cross = in_x * out_y - in_y * out_x
                     observation.signed_turn = observation.signed_turn
                         + (cross < 0 and -turn or turn)
+                    if turn >= MIN_SCRIBBLE_TURN then
+                        observation.total_turn = observation.total_turn + turn
+                    end
                 end
             end
         end
@@ -130,11 +139,14 @@ local function buildObservations(trace)
             observation.intent = math.max(0.9, observation.intent)
         end
 
-        local turn_ratio = math.abs(observation.signed_turn) / (2 * math.pi)
+        -- A scribble on a key types its letter twice. Count turning in
+        -- both directions: a back-and-forth scribble turns left and right
+        -- in turn, while a single sharp corner stays under 0.7 of a turn.
+        local turn_ratio = observation.total_turn / (2 * math.pi)
         local travel_ratio = observation.path_length / key_size
-        if turn_ratio >= 0.45 and travel_ratio >= 0.65 then
+        if turn_ratio >= 0.7 and travel_ratio >= 0.65 then
             observation.repeat_confidence = clamp(
-                (turn_ratio - 0.45) * 1.8
+                (turn_ratio - 0.7) * 2
                     + (travel_ratio - 0.65) * 0.35,
                 0, 1)
         else
