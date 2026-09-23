@@ -3,64 +3,11 @@ local it = T.it
 
 local Replay = dofile(T.plugin_dir .. "/../tools/replay.lua")
 
--- Kindle-like keys, 125 x 70, rows offset by half a key.
-local ROWS = { "qwertyuiop", "asdfghjkl", "zxcvbnm" }
+local CleanSwipes = dofile(T.plugin_dir .. "/../tools/clean_swipes.lua")
+local keys = CleanSwipes.defaultKeys
 
-local function keys()
-    local list = {}
-    for row, letters in ipairs(ROWS) do
-        for index = 1, #letters do
-            list[#list + 1] = {
-                row = row,
-                key = letters:sub(index, index),
-                x = (row - 1) * 62 + (index - 1) * 125,
-                y = (row - 1) * 70,
-                w = 125,
-                h = 70,
-            }
-        end
-    end
-    return list
-end
-
-local function center(letter)
-    for _, key in ipairs(keys()) do
-        if key.key == letter then
-            return key.x + key.w / 2, key.y + key.h / 2
-        end
-    end
-end
-
--- Pans every 10px along the key centres of word, then a pan release.
 local function attemptFor(word)
-    local events, t = {}, 0
-    local sx, sy = center(word:sub(1, 1))
-    local px, py = sx, sy
-    for index = 2, #word do
-        local x, y = center(word:sub(index, index))
-        local steps = math.max(1,
-            math.floor(math.sqrt((x - px) ^ 2 + (y - py) ^ 2) / 10))
-        for step = 1, steps do
-            t = t + 10000
-            events[#events + 1] = {
-                kind = "pan",
-                t = t,
-                pos = { px + (x - px) * step / steps,
-                    py + (y - py) * step / steps },
-                start = { sx, sy },
-            }
-        end
-        t = t + 40000
-        px, py = x, y
-    end
-    events[#events + 1] = {
-        kind = "pan_release", t = t + 10000,
-        pos = { px, py }, start = { sx, sy },
-    }
-    return {
-        type = "attempt", target = word, dictionary = "en",
-        keys = keys(), events = events, candidates = {},
-    }
+    return CleanSwipes.attempt(word, keys())
 end
 
 local plugin = Replay.loadPlugin(T.plugin_dir)
