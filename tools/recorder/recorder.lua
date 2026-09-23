@@ -19,6 +19,7 @@ function Recorder:new(options)
         event_start = nil,
         origin = nil,
         candidate_list = nil,
+        dispatched_list = {},
         last_attempt = nil,
         finished = false,
     }, self)
@@ -134,6 +135,24 @@ function Recorder:gesture(kind, ges, key)
 end
 
 -- Tapless did not take the gesture: it is not part of a swipe.
+-- Every gesture KOReader dispatched, whichever widget took it, kept with
+-- the next attempt. top: the window it was sent to first.
+function Recorder:dispatched(ges, top)
+    if self.finished or not ges then
+        return
+    end
+    local list = self.dispatched_list
+    if #list >= 400 then
+        table.remove(list, 1)
+    end
+    list[#list + 1] = {
+        ges = ges.ges,
+        pos = point(ges.pos),
+        time = ges.time,
+        top = top,
+    }
+end
+
 function Recorder:dropGesture()
     self.events, self.event_start, self.origin = nil, nil, nil
 end
@@ -181,9 +200,11 @@ function Recorder:finalize(signature, trace_info, context)
         candidates = candidates,
         inserted = inserted,
         short = short,
+        gestures = self.dispatched_list,
     }
     self.last_attempt = { id = id, position = self.position }
     self:dropGesture()
+    self.dispatched_list = {}
     self.candidate_list = nil
     if inserted then
         self:advance()

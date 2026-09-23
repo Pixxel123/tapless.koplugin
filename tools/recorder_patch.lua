@@ -64,6 +64,23 @@ local function install()
     local log = assert(io.open(dev_dir .. "/session.jsonl", "a"))
     local active = true
     local toast
+    local current_keyboard
+    -- The window KOReader sends gestures to: the topmost one that is not a
+    -- toast, with "+toast" when a toast is shown above it.
+    local function topWindow(stack)
+        local toast_shown = false
+        for index = #(stack or {}), 1, -1 do
+            local widget = stack[index].widget
+            if widget.toast then
+                toast_shown = true
+            else
+                local label = widget == current_keyboard and "keyboard"
+                    or widget.name or "other"
+                return toast_shown and label .. "+toast" or label
+            end
+        end
+        return "none"
+    end
 
     local function stop(reason)
         if not active then
@@ -193,6 +210,7 @@ local function install()
     end)
 
     wrap("onShow", function(original, keyboard, ...)
+        current_keyboard = keyboard
         local result = original(keyboard, ...)
         safely(function() recorder:showPrompt() end)
         return result
@@ -200,6 +218,19 @@ local function install()
 
     local ok, meta = pcall(dofile,
         DataStorage:getDataDir() .. "/plugins/tapless.koplugin/_meta.lua")
+    -- Log every gesture before any widget sees it, to find out where the
+    -- rest of a swipe goes when the keyboard stops receiving it.
+    local original_send = UIManager.sendEvent
+    function UIManager:sendEvent(event, ...)
+        if active and event and event.handler == "onGesture" then
+            safely(function()
+                recorder:dispatched(event.args and event.args[1],
+                    topWindow(self._window_stack))
+            end)
+        end
+        return original_send(self, event, ...)
+    end
+
     safely(function()
         recorder:start{
             screen = { Device.screen:getWidth(), Device.screen:getHeight() },
