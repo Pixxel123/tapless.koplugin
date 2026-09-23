@@ -417,6 +417,9 @@ function Manager:_uninstall(id, name)
 end
 
 function Manager:_personalContext()
+    if self.language_controller then
+        return self.language_controller:personalContext(self.keyboard)
+    end
     local keyboard = self.keyboard
     return keyboard and (keyboard.swype_mvp_dictionary or "en") or "en",
         keyboard and keyboard.swype_mvp_normalization_profile or nil

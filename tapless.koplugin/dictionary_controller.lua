@@ -70,6 +70,19 @@ function DictionaryController:activeDictionary(keyboard)
         or self.settings:readSetting(self.setting_key, "en")
 end
 
+-- The language whose personal words to show, and its normalization
+-- profile: the keyboard's when one is open, otherwise the saved language.
+function DictionaryController:personalContext(keyboard)
+    local dictionary = self:activeDictionary(keyboard)
+    local profile = keyboard and keyboard.swype_mvp_normalization_profile
+    if not profile then
+        local descriptor = self.registry:get(dictionary, self.plugin_dir)
+        profile = descriptor and descriptor.normalization_profile
+            or self.default_profile
+    end
+    return dictionary, profile
+end
+
 function DictionaryController:setEnabled(id, enabled, keyboard)
     if not self.manager:isDictionaryAvailable(id, self.plugin_dir) then
         return false, "Dictionary is not installed."
