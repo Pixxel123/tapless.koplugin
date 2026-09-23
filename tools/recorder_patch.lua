@@ -48,6 +48,37 @@ local function keyRects(keyboard)
     return keys
 end
 
+local function findUpvalue(fn, wanted)
+    for index = 1, 100 do
+        local name, value = debug.getupvalue(fn, index)
+        if not name then
+            return
+        end
+        if name == wanted then
+            return value
+        end
+    end
+end
+
+-- Prompted words are not what the tester would type, so the keyboard must
+-- not learn which words follow which from them. Returns a function that
+-- turns learning back on.
+local function pauseContextLearning(VirtualKeyboard)
+    local adapter = type(VirtualKeyboard._swypeCommitPendingContext)
+            == "function"
+        and findUpvalue(VirtualKeyboard._swypeCommitPendingContext, "adapter")
+    local context_model = type(adapter) == "table" and adapter.input_controller
+        and adapter.input_controller.context_model
+    if type(context_model) ~= "table" or not context_model.learn then
+        logger.warn("Tapless recorder: cannot pause word-pair learning")
+        return function() end
+    end
+    context_model.learn = function() end
+    return function()
+        context_model.learn = nil
+    end
+end
+
 local function install()
     local VirtualKeyboard = require("ui/widget/virtualkeyboard")
     if not VirtualKeyboard._tapless_adapter_installed then
@@ -61,6 +92,7 @@ local function install()
     local Recorder = dofile(dev_dir .. "/recorder.lua")
 
     local mode = readLines(dev_dir .. "/mode")[1] or "words"
+    local resumeContextLearning = pauseContextLearning(VirtualKeyboard)
     local log = assert(io.open(dev_dir .. "/session.jsonl", "a"))
     local active = true
     local toast
@@ -87,6 +119,7 @@ local function install()
             return
         end
         active = false
+        resumeContextLearning()
         if toast then
             UIManager:close(toast)
             toast = nil
