@@ -7,6 +7,17 @@ local Scoring = {
     FIRST_LETTER_COST = 6,
     -- Cost of taking the key the swipe started on as a neighbouring key.
     START_MISMATCH_COST = 1,
+    -- A word whose letters the path did not all cross may take up to
+    -- NEAR_KEY_LIMIT of its inner letters from a crossed key next to them,
+    -- at NEAR_KEY_COST each. Keys are next to each other when their
+    -- centres are at most NEAR_KEY_REACH key sizes apart.
+    NEAR_KEY_COST = 0.5,
+    NEAR_KEY_LIMIT = 2,
+    NEAR_KEY_REACH = 1.2,
+    -- Only keys where the path turned by at least NEAR_KEY_MIN_TURN
+    -- radians lend their neighbours: a corner cut short, not a key passed
+    -- on the way.
+    NEAR_KEY_MIN_TURN = 0.3,
 }
 Scoring.__index = Scoring
 
@@ -82,9 +93,107 @@ function Scoring:editDistance(left, right, max_distance)
     return previous[right_len] or infinity
 end
 
+function Scoring:_lendsNeighbours(observations, position)
+    local observation = observations and observations[position]
+    return not observation
+        or math.abs(observation.signed_turn or 0) >= self.NEAR_KEY_MIN_TURN
+end
+
+-- For each trace position, the next position at or after it where the path
+-- turned on a key next to each letter's own key. nil without key positions.
+function Scoring:buildNearPositions(trace_chars, key_centers, observations)
+    if not key_centers or not next(key_centers) then
+        return nil
+    end
+    local adjacent = {}
+    for code = 1, 26 do
+        local center = key_centers[ASCII_A + code - 1]
+        adjacent[code] = {}
+        if center then
+            local reach = self.NEAR_KEY_REACH * math.max(1, center.size or 1)
+            for other = 1, 26 do
+                local other_center = key_centers[ASCII_A + other - 1]
+                if other ~= code and other_center then
+                    local dx = other_center.x - center.x
+                    local dy = other_center.y - center.y
+                    if math.sqrt(dx * dx + dy * dy) <= reach then
+                        adjacent[code][other] = true
+                    end
+                end
+            end
+        end
+    end
+    local trace_end = #trace_chars + 1
+    local next_near = { [trace_end] = {} }
+    for position = #trace_chars, 1, -1 do
+        local row = {}
+        for code, found in pairs(next_near[position + 1]) do
+            row[code] = found
+        end
+        local trace_code = string.byte(trace_chars[position]) - ASCII_A + 1
+        if self:_lendsNeighbours(observations, position) then
+            for code in pairs(adjacent[trace_code] or {}) do
+                row[code] = position
+            end
+        end
+        next_near[position] = row
+    end
+    -- Letters the path crossed, and letters it could borrow from a key
+    -- where it turned, so words that cannot match are skipped cheaply.
+    local lending, present, lendable = {}, {}, {}
+    for position = 1, #trace_chars do
+        local trace_code = string.byte(trace_chars[position]) - ASCII_A + 1
+        present[trace_code] = true
+        lending[position] = self:_lendsNeighbours(observations, position)
+        if lending[position] then
+            for code in pairs(adjacent[trace_code] or {}) do
+                lendable[code] = true
+            end
+        end
+    end
+    return {
+        adjacent = adjacent,
+        next = next_near,
+        lending = lending,
+        present = present,
+        lendable = lendable,
+    }
+end
+
+-- False when the neighbouring-key pass cannot match candidate: it takes
+-- no more than NEAR_KEY_LIMIT inner letters from lending keys, and first
+-- and last letters only through their own allowances.
+function Scoring:_nearPossible(candidate, near, allow_start_mismatch,
+        allow_endpoint_mismatch)
+    local candidate_len = #candidate
+    local borrowed = 0
+    for position = 1, candidate_len do
+        local code = string.byte(candidate, position) - ASCII_A + 1
+        if not near.present[code] then
+            if position == 1 then
+                if not allow_start_mismatch then
+                    return false
+                end
+            elseif position == candidate_len then
+                if not allow_endpoint_mismatch then
+                    return false
+                end
+            elseif not near.lendable[code] then
+                return false
+            else
+                borrowed = borrowed + 1
+                if borrowed > self.NEAR_KEY_LIMIT then
+                    return false
+                end
+            end
+        end
+    end
+    return true
+end
+
 function Scoring:matchScore(candidate, trace_chars, next_positions,
         allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
-        observations, allow_start_mismatch)
+        observations, allow_start_mismatch, near, near_limit)
     local trace_len = #trace_chars
     local trace_end = trace_len + 1
     local candidate_len = #candidate
@@ -94,6 +203,8 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
     local last_match
     local endpoint_mismatch = false
     local start_mismatch = false
+    local near_left = near and near_limit or 0
+    local near_used = 0
     local matched_positions = {}
     local geometry_total = 0
     local geometry_measured = 0
@@ -109,6 +220,15 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
                 and trace_len > 1 and string.byte(trace_chars[1]) ~= byte then
             found = 1
             start_mismatch = true
+        end
+        if (not found or found == trace_end) and near_left > 0
+                and i > 1 and i < candidate_len then
+            local near_found = near.next[pos] and near.next[pos][code]
+            if near_found then
+                found = near_found
+                near_left = near_left - 1
+                near_used = near_used + 1
+            end
         end
         if (not found or found == trace_end) and allow_endpoint_mismatch
                 and i == candidate_len and matched == candidate_len - 1
@@ -190,6 +310,7 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
         if endpoint_mismatch then
             score = score + 5
         end
+        score = score + near_used * self.NEAR_KEY_COST
     end
     if geometry_measured > 0 then
         score = score + math.min(4,
@@ -200,7 +321,7 @@ end
 
 function Scoring:dynamicMatchScore(candidate, trace_chars,
         allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
-        observations, allow_start_mismatch)
+        observations, allow_start_mismatch, near)
     local trace_len = #trace_chars
     local candidate_len = #candidate
     if trace_len == 0 or candidate_len == 0 then
@@ -223,10 +344,18 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
     end
 
     local infinity = 1000000
-    local previous = { [0] = 0 }
-    for trace_position = 1, trace_len do
-        previous[trace_position] = previous[trace_position - 1]
-            + weights[trace_position] * 3
+    -- One alignment per number of letters taken from neighbouring keys, so
+    -- that no more than NEAR_KEY_LIMIT are used.
+    local layers = near and self.NEAR_KEY_LIMIT or 0
+    local previous = {}
+    for used = 0, layers do
+        local row = { [0] = used == 0 and 0 or infinity }
+        for trace_position = 1, trace_len do
+            row[trace_position] = used == 0
+                and row[trace_position - 1] + weights[trace_position] * 3
+                or infinity
+        end
+        previous[used] = row
     end
 
     -- A word that does not start with the first trace letter pays for it
@@ -236,17 +365,20 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
     local first_code = string.byte(candidate, 1) - ASCII_A + 1
     local first_letter_cost = first_trace_code ~= first_code
         and self.FIRST_LETTER_COST or 0
+    -- parents[candidate_position][used][trace_position]: the layer the
+    -- letter was matched from, or false when the trace letter was skipped.
     local parents = {}
     local final_matches = {}
     for candidate_position = 1, candidate_len do
-        local current = { [0] = infinity }
-        local parent_row = {}
-        parents[candidate_position] = parent_row
+        local current, parent_layers = {}, {}
+        for used = 0, layers do
+            current[used] = { [0] = infinity }
+            parent_layers[used] = {}
+        end
+        parents[candidate_position] = parent_layers
         local candidate_byte = string.byte(candidate, candidate_position)
         local candidate_code = candidate_byte - ASCII_A + 1
         for trace_position = 1, trace_len do
-            local skipped = current[trace_position - 1]
-                + weights[trace_position]
             local trace_code = string.byte(trace_chars[trace_position])
                 - ASCII_A + 1
             local endpoint_mismatch = allow_endpoint_mismatch
@@ -257,51 +389,84 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
                 and candidate_position == 1 and trace_position == 1
                 and candidate_len > 1 and trace_len > 1
                 and trace_code ~= candidate_code
-            local matched = infinity
-            if trace_code == candidate_code or endpoint_mismatch
-                    or start_mismatch then
-                matched = previous[trace_position - 1]
-                if candidate_position == 1 then
-                    matched = matched + (start_mismatch
-                        and self.START_MISMATCH_COST or first_letter_cost)
+            local near_match = near and trace_code ~= candidate_code
+                and near.lending[trace_position]
+                and candidate_position > 1
+                and candidate_position < candidate_len
+                and near.adjacent[trace_code]
+                and near.adjacent[trace_code][candidate_code]
+            local exact = trace_code == candidate_code or endpoint_mismatch
+                or start_mismatch
+            local cost = 0
+            if candidate_position == 1 then
+                cost = start_mismatch and self.START_MISMATCH_COST
+                    or first_letter_cost
+            end
+            if near_match then
+                cost = cost + self.NEAR_KEY_COST
+            end
+            local geometry
+            if (exact or near_match) and trace_letter_points
+                    and key_centers then
+                local point = endpoint_mismatch and endpoint_pos
+                    or trace_letter_points[trace_position]
+                local target = key_centers[candidate_byte]
+                if point and target then
+                    local dx = point.x - target.x
+                    local dy = point.y - target.y
+                    local scale = math.max(1, target.size or 1)
+                    geometry = math.min(2,
+                        math.sqrt(dx * dx + dy * dy) / scale)
+                        * 2 / candidate_len
                 end
-                if matched < infinity and trace_letter_points and key_centers then
-                    local point = endpoint_mismatch and endpoint_pos
-                        or trace_letter_points[trace_position]
-                    local target = key_centers[candidate_byte]
-                    if point and target then
-                        local dx = point.x - target.x
-                        local dy = point.y - target.y
-                        local scale = math.max(1, target.size or 1)
-                        local normalized = math.min(2,
-                            math.sqrt(dx * dx + dy * dy) / scale)
-                        matched = matched
-                            + normalized * 2 / candidate_len
+            end
+            for used = 0, layers do
+                local skipped = current[used][trace_position - 1]
+                    + weights[trace_position]
+                local from
+                if exact then
+                    from = used
+                elseif near_match and used > 0 then
+                    from = used - 1
+                end
+                local matched = infinity
+                if from then
+                    matched = previous[from][trace_position - 1] + cost
+                    if matched < infinity and geometry then
+                        matched = matched + geometry
                     end
                 end
-            end
-            if matched <= skipped then
-                current[trace_position] = matched
-                parent_row[trace_position] = true
-            else
-                current[trace_position] = skipped
-                parent_row[trace_position] = false
-            end
-            if candidate_position == candidate_len and matched < infinity then
-                final_matches[trace_position] = matched
+                if matched <= skipped then
+                    current[used][trace_position] = matched
+                    parent_layers[used][trace_position] = from
+                else
+                    current[used][trace_position] = skipped
+                    parent_layers[used][trace_position] = false
+                end
+                if candidate_position == candidate_len
+                        and matched < infinity then
+                    local best = final_matches[trace_position]
+                    if not best or matched < best.score then
+                        final_matches[trace_position] = {
+                            score = matched,
+                            used = used,
+                        }
+                    end
+                end
             end
         end
         previous = current
     end
 
     local best_score = infinity
-    local best_end
-    for trace_position, match_score in pairs(final_matches) do
-        local score = match_score
+    local best_end, best_used
+    for trace_position, match in pairs(final_matches) do
+        local score = match.score
             + skippedWeight(trace_position + 1, trace_len) * 3
         if score < best_score then
             best_score = score
             best_end = trace_position
+            best_used = match.used
         end
     end
     if not best_end then
@@ -311,10 +476,13 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
     local matched_positions = {}
     local candidate_position = candidate_len
     local trace_position = best_end
+    local used = best_used
     while candidate_position > 0 and trace_position > 0 do
-        if parents[candidate_position][trace_position] then
+        local from = parents[candidate_position][used][trace_position]
+        if from then
             matched_positions[candidate_position] = trace_position
             candidate_position = candidate_position - 1
+            used = from
         end
         trace_position = trace_position - 1
     end
@@ -399,27 +567,44 @@ function Scoring:finishEntryScore(signature, entry, score, matched_positions,
             - math.floor(repeat_bonus * self.REPEAT_BONUS)
 end
 
+-- The third result is true when the word needed letters from keys next to
+-- the ones the path crossed.
 function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
         trace_info, key_centers, allow_endpoint_mismatch, context_bonus,
-        allow_start_mismatch)
+        allow_start_mismatch, near)
     local candidate = entry.gesture_signature or entry.signature
-    local score, _, matched_positions = self:matchScore(
-        candidate,
-        trace_chars,
-        next_positions,
-        allow_endpoint_mismatch,
-        trace_info and trace_info.letter_points,
-        trace_info and trace_info.endpoint_pos,
-        key_centers,
-        trace_info and trace_info.observations,
-        allow_start_mismatch)
-    return self:finishEntryScore(signature, entry, score, matched_positions,
-        trace_info, context_bonus)
+    local function match(near_limit)
+        return self:matchScore(
+            candidate,
+            trace_chars,
+            next_positions,
+            allow_endpoint_mismatch,
+            trace_info and trace_info.letter_points,
+            trace_info and trace_info.endpoint_pos,
+            key_centers,
+            trace_info and trace_info.observations,
+            allow_start_mismatch,
+            near,
+            near_limit)
+    end
+    local score, _, matched_positions = match(0)
+    local used_near = false
+    if score >= 1000 and near and self:_nearPossible(candidate, near,
+            allow_start_mismatch, allow_endpoint_mismatch) then
+        local near_score, _, near_positions = match(self.NEAR_KEY_LIMIT)
+        if near_score < score then
+            score, matched_positions = near_score, near_positions
+            used_near = true
+        end
+    end
+    local spatial_score, ranked_score = self:finishEntryScore(signature,
+        entry, score, matched_positions, trace_info, context_bonus)
+    return spatial_score, ranked_score, used_near
 end
 
 function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         key_centers, allow_endpoint_mismatch, context_bonus,
-        allow_start_mismatch)
+        allow_start_mismatch, near)
     local candidate = entry.gesture_signature or entry.signature
     local score, _, matched_positions = self:dynamicMatchScore(
         candidate,
@@ -429,7 +614,8 @@ function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         trace_info and trace_info.endpoint_pos,
         key_centers,
         trace_info and trace_info.observations,
-        allow_start_mismatch)
+        allow_start_mismatch,
+        near)
     return self:finishEntryScore(signature, entry, score, matched_positions,
         trace_info, context_bonus)
 end

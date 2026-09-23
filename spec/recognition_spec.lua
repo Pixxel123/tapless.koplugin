@@ -69,7 +69,8 @@ end
 
 -- signature: letters the finger crossed. start: where the finger landed.
 -- intents: how deliberately each letter was crossed (turns score high).
-local function recognize(words, signature, start, intents)
+-- turns: how far the path turned on each letter's key, in radians.
+local function recognize(words, signature, start, intents, turns)
     local layout = newLayout()
     local geometry = T.load("keyboard_geometry"):new(T.normalization)
     local scoring = T.load("scoring"):new(T.normalization)
@@ -80,7 +81,10 @@ local function recognize(words, signature, start, intents)
         if index > 1 then
             points[index] = center(layout, signature:sub(index, index))
         end
-        observations[index] = { intent = intents and intents[index] or 1 }
+        observations[index] = {
+            intent = intents and intents[index] or 1,
+            signed_turn = turns and turns[index] or 0,
+        }
     end
     local trace_info = {
         letter_points = points,
@@ -139,4 +143,68 @@ it("ignores neighbouring keys when the swipe starts well inside a key",
     -- The finger lands in the middle of q.
     local results = recognize({ { "was", 6000 } }, "qas", { x = 50, y = 50 })
     T.eq(words(results), "")
+end)
+
+-- A path that turns on u, next to i, on its way to n: "wertyujnbvfde".
+local NEAR_TRACE = "wertyujnbvfde"
+local NEAR_INTENTS = { 0.9, 0.3, 0.3, 0.3, 0.3, 0.9, 0.3, 0.9, 0.3, 0.3,
+    0.3, 0.3, 0.9 }
+local NEAR_TURNS = { 0, 0, 0, 0, 0, 1.2, 1.2, 1.2, 0, 0, 0, 0, 0 }
+
+it("finds a word when the path turns next to one of its letters",
+        function()
+    local results = recognize({ { "wine", 6000 } }, NEAR_TRACE,
+        { x = 150, y = 50 }, NEAR_INTENTS,
+        NEAR_TURNS)
+    T.eq(words(results), "wine")
+end)
+
+it("prefers a word whose letters the path crossed when as common",
+        function()
+    local results = recognize({ { "wyne", 5000 }, { "wine", 5000 } },
+        NEAR_TRACE, { x = 150, y = 50 }, NEAR_INTENTS,
+        NEAR_TURNS)
+    T.eq(words(results), "wyne,wine")
+end)
+
+it("allows at most two letters from neighbouring keys", function()
+    -- i, h and m are next to u, j and n, where the path turned, but none
+    -- were crossed.
+    local results = recognize({ { "wihme", 6000 } }, NEAR_TRACE,
+        { x = 150, y = 50 }, NEAR_INTENTS,
+        NEAR_TURNS)
+    T.eq(words(results), "")
+end)
+
+it("does not borrow a letter from a key the path went straight through",
+        function()
+    local results = recognize({ { "wine", 6000 } }, NEAR_TRACE,
+        { x = 150, y = 50 }, NEAR_INTENTS)
+    T.eq(words(results), "")
+end)
+
+it("limits letters from neighbouring keys in the final alignment too",
+        function()
+    local layout = newLayout()
+    local geometry = T.load("keyboard_geometry"):new(T.normalization)
+    local scoring = T.load("scoring"):new(T.normalization)
+    local key_centers = geometry:keyCenters(layout)
+    local chars = scoring:buildNextPositions(NEAR_TRACE)
+    local points, observations = {}, {}
+    for index = 1, #NEAR_TRACE do
+        points[index] = center(layout, NEAR_TRACE:sub(index, index))
+        observations[index] = {
+            intent = NEAR_INTENTS[index],
+            signed_turn = NEAR_TURNS[index],
+        }
+    end
+    local near = scoring:buildNearPositions(chars, key_centers, observations)
+    -- i, h and m would all have to come from neighbouring keys.
+    local score = scoring:dynamicMatchScore("wihme", chars, false, points,
+        points[#points], key_centers, observations, false, near)
+    T.truthy(score >= 1000, "score " .. score)
+    -- Two are allowed.
+    score = scoring:dynamicMatchScore("wihne", chars, false, points,
+        points[#points], key_centers, observations, false, near)
+    T.truthy(score < 1000, "score " .. score)
 end)

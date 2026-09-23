@@ -26,6 +26,8 @@ function RecognitionEngine:pickCandidates(options)
     end
     local data_lang = package.descriptor.data_language or dictionary
     local trace_chars, next_positions = self.scoring:buildNextPositions(signature)
+    local near = self.scoring:buildNearPositions(trace_chars, key_centers,
+        trace_info and trace_info.observations)
     local first = string.sub(signature, 1, 1)
     local last = string.sub(signature, -1)
     local max_spatial = math.max(6, #signature)
@@ -37,7 +39,8 @@ function RecognitionEngine:pickCandidates(options)
                 local context_bonus = options.context_bonus
                     and options.context_bonus(
                         trace_info and trace_info.previous_word, entry.word) or 0
-                local spatial_score, ranked_score = self.scoring:scoreEntry(
+                local spatial_score, ranked_score, used_near =
+                    self.scoring:scoreEntry(
                     signature,
                     entry,
                     trace_chars,
@@ -46,13 +49,15 @@ function RecognitionEngine:pickCandidates(options)
                     key_centers,
                     allow_endpoint_mismatch,
                     context_bonus,
-                    allow_start_mismatch)
+                    allow_start_mismatch,
+                    near)
                 if spatial_score <= max_spatial then
                     self.scoring:addCandidate(shortlist, seen, entry,
                         spatial_score, ranked_score,
                         math.max(limit, DYNAMIC_CANDIDATE_LIMIT), {
                             allow_endpoint_mismatch = allow_endpoint_mismatch,
                             allow_start_mismatch = allow_start_mismatch,
+                            allow_near = used_near,
                             context_bonus = context_bonus,
                             entry = entry,
                         })
@@ -135,7 +140,8 @@ function RecognitionEngine:pickCandidates(options)
                 key_centers,
                 metadata.allow_endpoint_mismatch,
                 metadata.context_bonus,
-                metadata.allow_start_mismatch)
+                metadata.allow_start_mismatch,
+                metadata.allow_near and near or nil)
             if spatial_score <= max_spatial then
                 self.scoring:addCandidate(results, final_seen, entry,
                     spatial_score, ranked_score,
