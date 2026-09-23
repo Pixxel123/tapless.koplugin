@@ -1,2 +1,3 @@
 sessions/
 tools/dkjson.lua
+__pycache__/

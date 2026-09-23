@@ -198,10 +198,14 @@ local function install()
         return result
     end)
 
+    local ok, meta = pcall(dofile,
+        DataStorage:getDataDir() .. "/plugins/tapless.koplugin/_meta.lua")
     safely(function()
         recorder:start{
             screen = { Device.screen:getWidth(), Device.screen:getHeight() },
             model = Device.model,
+            plugin_version = ok and type(meta) == "table"
+                and meta.version or nil,
         }
     end)
     logger.info("Tapless recorder: recording", mode)

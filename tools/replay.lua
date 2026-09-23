@@ -203,6 +203,10 @@ function Replay.run(plugin, attempt)
     local trace_info = finalized.trace_info
     local geometry = plugin.geometry
     local start = trace_info.points and trace_info.points[1]
+    -- No context_bonus and no personal dictionary here: replay does not
+    -- reproduce the device's saved word-pair learning or personal words
+    -- (a stated not-goal), so device accuracy can drift above replay's,
+    -- especially over repeated sessions with the same sentence pool.
     local candidates = plugin.engine:pickCandidates{
         signature = signature,
         limit = 4,

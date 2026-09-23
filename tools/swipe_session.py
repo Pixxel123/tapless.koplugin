@@ -96,6 +96,11 @@ def install(kindle, prompts, mode):
 def uninstall(kindle):
     kindle.ssh(f"rm -f {shlex.quote(kindle.dev + '/recording')} "
                f"{shlex.quote(kindle.patch)}", check=False)
+    # follow() started a remote `tail -f` over ssh with no tty; that
+    # process can outlive this ssh session, so stop it explicitly rather
+    # than rely on it noticing the log file is gone.
+    kindle.ssh("pkill -f " + shlex.quote(
+        "tail -n +1 -f " + kindle.dev + "/session.jsonl"), check=False)
 
 
 def collect(kindle):
