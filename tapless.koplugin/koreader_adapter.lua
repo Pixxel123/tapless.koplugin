@@ -181,6 +181,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
 
     function VirtualKeyboard:onCloseWidget()
         self.swype_mvp_closed = true
+        self.swype_mvp_pending_space = nil
         self:_swypeReset()
         adapter.dictionary_controller:stopWarmUp(self)
         self:_swypeCancelBucketPrefetch()

@@ -222,7 +222,7 @@ function InputController:selectCandidate(keyboard, candidate)
     self:learnContext(selection.pending.previous_word, candidate.word)
     selection.pending.context_committed = true
     keyboard.inputbox:addChars(selection.replacement)
-    self:_markSpace(keyboard)
+    self:_markPendingSpace(keyboard)
     self:clearCandidateState(keyboard)
     keyboard:_swypeRefreshCandidateRow()
 end
@@ -267,8 +267,11 @@ function InputController:insertBestAndShowCandidates(
     local inserted = keyboard.swype_mvp_session:recordInsert(
         signature, candidates, previous_word)
     self.logger.dbg("swype mvp best", signature, "=>", candidates[1].word)
+    if self:_takePendingSpace(keyboard) then
+        keyboard.inputbox:addChars(" ")
+    end
     keyboard.inputbox:addChars(inserted)
-    self:_markSpace(keyboard)
+    self:_markPendingSpace(keyboard)
     keyboard:_swypeRefreshCandidateRow()
     self:releaseOneShotShift(keyboard)
     return true
@@ -309,12 +312,36 @@ function InputController:finalizeSignature(keyboard, signature, trace_info)
     return true
 end
 
--- Remember where a space typed by the keyboard ended, whether tapped or
--- added after a swiped word, so a second space right after it can become
--- a period.
+-- Remember where a tapped space ended, so a second space right after it
+-- can become a period.
 function InputController:_markSpace(keyboard)
     keyboard.swype_mvp_space_charpos = keyboard.inputbox.charpos
 end
+
+-- A swiped word is followed by a space only once something else is typed:
+-- the next swiped or tapped word gets one, punctuation does not.
+function InputController:_markPendingSpace(keyboard)
+    keyboard.swype_mvp_pending_space = {
+        inputbox = keyboard.inputbox,
+        charpos = keyboard.inputbox.charpos,
+    }
+end
+
+-- True, once, when a space is pending and the cursor has not moved. A
+-- keyboard can serve several text fields, so the field must match too.
+function InputController:_takePendingSpace(keyboard)
+    local pending = keyboard.swype_mvp_pending_space
+    keyboard.swype_mvp_pending_space = nil
+    return pending ~= nil and pending.inputbox == keyboard.inputbox
+        and pending.charpos == keyboard.inputbox.charpos
+end
+
+-- Punctuation that is followed by a space, so a word after it still gets
+-- one.
+local SPACED_PUNCTUATION = {
+    ["."] = true, [","] = true, ["!"] = true, ["?"] = true,
+    [":"] = true, [";"] = true, [")"] = true,
+}
 
 function InputController:_takeDoubleSpace(keyboard, key)
     local charpos = keyboard.swype_mvp_space_charpos
@@ -335,6 +362,29 @@ function InputController:_takeDoubleSpace(keyboard, key)
 end
 
 function InputController:addChar(keyboard, key, keep_swype_candidates)
+    local pending_space = self:_takePendingSpace(keyboard)
+    local keep_pending_space = false
+    if pending_space then
+        if key == " " then
+            -- The space the swiped word was waiting for. With the double
+            -- space option it counts as the second space, unless the word
+            -- already ends in punctuation.
+            local previous = keyboard.inputbox:getChar(-1)
+            if self.settings:isTrue(self.DOUBLE_SPACE_SETTING)
+                    and not keyboard.uwrap_func
+                    and previous and not previous:match("^[%s%p]$") then
+                self:commitPendingContext(keyboard)
+                self:clearCandidateRow(keyboard)
+                key = ". "
+            end
+        elseif SPACED_PUNCTUATION[key] then
+            keep_pending_space = true
+        elseif self.normalization:normalizeChar(
+                    key, keyboard.swype_mvp_normalization_profile)
+                or key:match("^%d$") then
+            key = " " .. key
+        end
+    end
     local period = self:_takeDoubleSpace(keyboard, key)
     self:commitPendingContext(keyboard)
     if period then
@@ -354,6 +404,9 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
     if key == " " then
         self:_markSpace(keyboard)
     end
+    if keep_pending_space then
+        self:_markPendingSpace(keyboard)
+    end
     local chars = self.normalization:splitChars(key or "")
     local last = chars[#chars]
     if last and self.normalization:normalizeChar(
@@ -368,6 +421,7 @@ end
 
 function InputController:delChar(keyboard)
     keyboard.swype_mvp_space_charpos = nil
+    keyboard.swype_mvp_pending_space = nil
     if self:rejectLastInsert(keyboard) then
         return
     end
