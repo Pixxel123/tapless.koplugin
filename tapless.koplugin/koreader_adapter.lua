@@ -32,6 +32,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:addKeys()
+        adapter.key_adapter:ensureInstalled()
         self:free()
         self.layout = {}
         local row_count = #self.KEYS + 1
