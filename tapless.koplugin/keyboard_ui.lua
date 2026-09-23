@@ -47,7 +47,7 @@ function KeyboardUI:createCandidateRow(keyboard, options)
         on_add_personal_word = function()
             keyboard:_swypeAddPersonalWord()
         end,
-        on_hold_candidate = function(index)
+        on_hold_candidate = function(index, closed)
             local candidates =
                 keyboard.swype_mvp_session:getCandidates() or {}
             local candidate = candidates[index]
@@ -59,8 +59,10 @@ function KeyboardUI:createCandidateRow(keyboard, options)
                     .. (candidate.output_word or candidate.word) .. "\"?",
                 ok_text = "Block",
                 ok_callback = function()
+                    closed()
                     keyboard:_swypeBlockCandidate(candidate)
                 end,
+                cancel_callback = closed,
             })
             return true
         end,

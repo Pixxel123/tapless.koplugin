@@ -27,22 +27,28 @@ function CandidateRow:create(options)
 
     for index = 1, slot_count do
  local word = slotText(index, candidates, options.personal_offer)
+        -- Marked while built, so that empty slots showing " " are not
+        -- taken for the space bar.
         local virtual_key = options.VirtualKey:new{
             key = word,
             label = word,
             keyboard = options.keyboard,
             width = candidate_width,
             height = options.height,
+            is_swype_candidate = true,
         }
-        virtual_key.is_swype_candidate = true
         virtual_key.swipe_callback = nil
         -- Holding a suggestion offers to block it; the lift that ends the
         -- hold must not also pick it.
         virtual_key.hold_callback = function()
             local offer = options.get_personal_offer
                 and options.get_personal_offer()
+            -- The dialog may take the lift instead, so it clears the flag
+            -- again when it closes.
             if not offer and options.on_hold_candidate
-                    and options.on_hold_candidate(index) then
+                    and options.on_hold_candidate(index, function()
+                        virtual_key.ignore_key_release = nil
+                    end) then
                 virtual_key.ignore_key_release = true
             end
         end

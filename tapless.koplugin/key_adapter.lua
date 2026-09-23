@@ -61,8 +61,7 @@ function KeyAdapter:moveSpaceCursor(key, ges)
                 and contains(key.dimen, start)) then
             -- A new gesture began, so a slide whose lift no key saw is
             -- over, even if the keys have been rebuilt since. Only a space
-            -- key may say so: empty suggestion slots also show " " and see
-            -- every pan before the space bar does.
+            -- key may say so, should any other key receive these pans.
             if self:isSpaceKey(key) then
                 keyboard.swype_mvp_space_cursor = nil
             end
