@@ -47,6 +47,14 @@ local function newKeyboard(calls, enabled)
             return true
         end,
         _swypeReset = function() end,
+        _swypeCommitPendingContext = function()
+            calls.committed = (calls.committed or 0) + 1
+        end,
+        _swypeClearCandidateRow = function()
+            calls.row_cleared = (calls.row_cleared or 0) + 1
+        end,
+        leftChar = function() calls.cursor = (calls.cursor or 0) - 1 end,
+        rightChar = function() calls.cursor = (calls.cursor or 0) + 1 end,
     }
 end
 
@@ -152,4 +160,156 @@ it("does nothing when no other patch changed the methods", function()
     local before = VirtualKey.onSwipeKey
     adapter:ensureInstalled()
     T.eq(VirtualKey.onSwipeKey, before)
+end)
+
+-- The space bar sits at y 100..140 and is 40 px high: 10 px per character.
+local SPACE = { x = 0, y = 100, w = 300, h = 40 }
+
+local function spaceKey(VirtualKey, keyboard, key)
+    local space = VirtualKey:new{ key = key or " ", keyboard = keyboard }
+    space.dimen = SPACE
+    return space
+end
+
+local function pan(start_x, x, start_y)
+    return {
+        ges = "pan",
+        start_pos = { x = start_x, y = start_y or 120 },
+        pos = { x = x, y = start_y or 120 },
+    }
+end
+
+local ON = { tapless_space_cursor = true }
+
+it("moves the cursor when sliding along the space bar", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    T.truthy(space.ges_events.SpaceCursorPan, "pan registered")
+    -- The first pan arrives after KOReader's pan threshold.
+    T.truthy(space:onSpaceCursorPan(nil, pan(100, 160)))
+    T.eq(calls.cursor, nil, "no jump when sliding starts")
+    space:onSpaceCursorPan(nil, pan(100, 195))
+    T.eq(calls.cursor, 3, "three characters right")
+    space:onSpaceCursorPan(nil, pan(100, 140))
+    T.eq(calls.cursor, -2, "five characters back")
+    -- A slow slide ends with a pan release under the finger.
+    local other = VirtualKey:new{ key = "\n", keyboard = keyboard }
+    T.truthy(other:onPanReleaseKey(nil,
+        { ges = "pan_release", pos = { x = 141, y = 121 } }))
+    T.eq(calls.stock_pan_release, nil, "release not typed")
+    T.eq(keyboard.swype_mvp_space_cursor, nil, "slide finished")
+end)
+
+it("forgets the swiped word once the cursor slides away", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    T.eq(calls.row_cleared, nil, "not before the cursor moves")
+    space:onSpaceCursorPan(nil, pan(100, 140))
+    -- Backspace and suggestions must no longer act on the swiped word.
+    T.eq(calls.committed, 1)
+    T.eq(calls.row_cleared, 1)
+    space:onSpaceCursorPan(nil, pan(100, 120))
+    T.eq(calls.row_cleared, 1, "once per slide")
+end)
+
+it("swallows the swipe that ends a fast slide", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    space:onSpaceCursorPan(nil, pan(100, 190))
+    T.truthy(space:onSwipeKey(nil,
+        { ges = "swipe", pos = { x = 100, y = 120 } }))
+    T.eq(calls.stock_swipe, nil)
+end)
+
+it("leaves word swipes that start on a letter to Tapless", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    T.eq(space:onSpaceCursorPan(nil, pan(20, 200, 50)), false)
+    T.eq(keyboard.swype_mvp_space_cursor, nil)
+end)
+
+it("does not swallow a later gesture after an unfinished slide", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    space:onSpaceCursorPan(nil, pan(100, 190))
+    -- The finger lifted above the keyboard: no release reached a key.
+    VirtualKey:new{ key = "a", keyboard = keyboard }:onSwipeKey(nil,
+        { ges = "swipe", pos = { x = 20, y = 50 } })
+    T.eq(calls.tapless_swipe, 1, "word swipe still reaches Tapless")
+end)
+
+it("forgets an unfinished slide once the keyboard is rebuilt", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    space:onSpaceCursorPan(nil, pan(100, 190))
+    -- The finger lifted above the keyboard, then the keys were rebuilt
+    -- (shift, symbols, another language), giving a new space key.
+    local new_space = spaceKey(VirtualKey, keyboard)
+    -- A word swipe from a letter passes its pans to the new space key
+    -- first, then ends with a pan release near where the slide was.
+    new_space:onSpaceCursorPan(nil, pan(20, 185, 50))
+    VirtualKey:new{ key = "a", keyboard = keyboard }:onPanReleaseKey(nil,
+        { ges = "pan_release", pos = { x = 191, y = 121 } })
+    T.eq(calls.tapless_pan_release, 1, "word swipe still reaches Tapless")
+end)
+
+it("types a space when the finger barely moved", function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    local space = spaceKey(VirtualKey, keyboard)
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    space:onSpaceCursorPan(nil, pan(100, 164))
+    space:onPanReleaseKey(nil, { ges = "pan_release", pos = { x = 164, y = 120 } })
+    T.eq(calls.cursor, nil)
+    T.eq(calls.tapless_pan_release, 1, "normal release handling")
+end)
+
+it("works with the full-width Japanese space key", function()
+    local calls, VirtualKey = setup(ON)
+    local space = spaceKey(VirtualKey, newKeyboard(calls), "\u{3000}")
+    space:onSpaceCursorPan(nil, pan(100, 160))
+    space:onSpaceCursorPan(nil, pan(100, 180))
+    T.eq(calls.cursor, 2)
+end)
+
+it("leaves the space bar alone when the option is off", function()
+    local calls, VirtualKey = setup()
+    local space = spaceKey(VirtualKey, newKeyboard(calls))
+    T.eq(space.ges_events.SpaceCursorPan, nil, "no pan registered")
+    T.eq(space:onSpaceCursorPan(nil, pan(100, 160)), false)
+    T.eq(rawget(VirtualKey, "onHoldSelect"), nil, "hold not wrapped")
+end)
+
+it("still slides when empty suggestion slots see the pans first",
+        function()
+    local calls, VirtualKey = setup(ON)
+    local keyboard = newKeyboard(calls)
+    -- Empty slots show " " and are marked as suggestions after they are
+    -- built, so they register for pans too, and sit above the space bar.
+    local slot = spaceKey(VirtualKey, keyboard)
+    slot.is_swype_candidate = true
+    local space = spaceKey(VirtualKey, keyboard)
+    for _, x in ipairs({ 160, 195 }) do
+        if not slot:onSpaceCursorPan(nil, pan(100, x)) then
+            space:onSpaceCursorPan(nil, pan(100, x))
+        end
+    end
+    T.eq(calls.cursor, 3, "three characters right")
+end)
+
+it("ignores empty suggestion slots that look like a space", function()
+    local calls, VirtualKey = setup(ON)
+    local slot = spaceKey(VirtualKey, newKeyboard(calls))
+    slot.is_swype_candidate = true
+    T.eq(slot:onSpaceCursorPan(nil, pan(100, 160)), false)
 end)

@@ -7,3 +7,10 @@ Swipe typing for the KOReader.
 ## Installation
 
 Extract into the `plugins` directory. Restart KOReader.
+
+## Options
+
+Tapless settings are under **Tools → Tapless**. These are off by default:
+
+- **Slide on space to move cursor**: slide left or right along the space
+  bar to move the text cursor. Holding space still switches language.

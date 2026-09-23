@@ -1,6 +1,14 @@
 local KeyAdapter = {}
 KeyAdapter.__index = KeyAdapter
 
+KeyAdapter.SPACE_CURSOR_SETTING = "tapless_space_cursor"
+
+-- Wrappers for methods VirtualKey does not define itself.
+local OPTIONAL_METHODS = {
+    onMultiswipeKey = true,
+    onSpaceCursorPan = true,
+}
+
 function KeyAdapter:new(normalization, gesture_range, settings)
     return setmetatable({
         normalization = assert(normalization),
@@ -16,6 +24,110 @@ function KeyAdapter:isTextKey(key)
         and #self.normalization:normalizeText(
             key.key or key.label,
             key.keyboard and key.keyboard.swype_mvp_normalization_profile) == 1
+end
+
+-- Space keys in every KOReader layout, including the full-width space used
+-- by the Japanese kana layers.
+function KeyAdapter:isSpaceKey(key)
+    return key and not key.is_swype_candidate
+        and (key.key == " " or key.key == "\u{3000}")
+end
+
+function KeyAdapter:spaceCursorEnabled()
+    return self.settings:isTrue(self.SPACE_CURSOR_SETTING)
+end
+
+local function contains(dimen, pos)
+    return dimen and pos
+        and pos.x >= dimen.x and pos.x < dimen.x + dimen.w
+        and pos.y >= dimen.y and pos.y < dimen.y + dimen.h
+end
+
+-- Slide on the space bar to move the cursor, one character per quarter key
+-- height. Holding space is left alone (it switches language). Pans that
+-- start elsewhere are word swipes and belong to Tapless.
+function KeyAdapter:moveSpaceCursor(key, ges)
+    local keyboard = key.keyboard
+    local start = ges and ges.start_pos
+    local pos = ges and ges.pos
+    if not keyboard or not start or not pos then
+        return false
+    end
+    local state = keyboard.swype_mvp_space_cursor
+    local same_slide = state and state.key == key
+        and state.start_x == start.x and state.start_y == start.y
+    if not same_slide then
+        if not (self:isSpaceKey(key) and self:spaceCursorEnabled()
+                and contains(key.dimen, start)) then
+            -- A new gesture began, so a slide whose lift no key saw is
+            -- over, even if the keys have been rebuilt since. Only a space
+            -- key may say so: empty suggestion slots also show " " and see
+            -- every pan before the space bar does.
+            if self:isSpaceKey(key) then
+                keyboard.swype_mvp_space_cursor = nil
+            end
+            return false
+        end
+        -- KOReader only reports a pan once the finger has moved past its
+        -- pan threshold. Start counting from there so the cursor does not
+        -- jump a few characters as soon as sliding begins.
+        keyboard.swype_mvp_space_cursor = {
+            key = key,
+            start_x = start.x,
+            start_y = start.y,
+            x = pos.x,
+            last = pos,
+            remainder = 0,
+            moved = false,
+        }
+        return true
+    end
+    local step = math.max(1, math.floor(key.dimen.h * 0.25))
+    local delta = pos.x - state.x + state.remainder
+    local chars = delta >= 0 and math.floor(delta / step)
+        or math.ceil(delta / step)
+    state.x = pos.x
+    state.last = pos
+    state.remainder = delta - chars * step
+    -- The keyboard's own left/right methods are wrapped by the input
+    -- method layouts (Chinese, Japanese, Korean, Vietnamese) to finish the
+    -- current composition first.
+    for _ = 1, math.abs(chars) do
+        if chars > 0 then
+            keyboard:rightChar()
+        else
+            keyboard:leftChar()
+        end
+    end
+    if chars ~= 0 and not state.moved then
+        state.moved = true
+        -- The cursor has left the swiped word: keep the word, but backspace
+        -- and the suggestions must no longer act on it.
+        keyboard:_swypeCommitPendingContext()
+        keyboard:_swypeClearCandidateRow()
+    end
+    return true
+end
+
+-- The lift that ends a slide on space arrives as a swipe (fast slide, at
+-- the start position) or a pan release (slow slide, at the finger). Swallow
+-- it so it does not type a key or start a word.
+function KeyAdapter:finishSpaceCursor(keyboard, ges)
+    local state = keyboard and keyboard.swype_mvp_space_cursor
+    if not state then
+        return false
+    end
+    keyboard.swype_mvp_space_cursor = nil
+    local pos = ges and ges.pos
+    if not state.moved or not pos then
+        return false
+    end
+    if ges.ges == "swipe" or ges.ges == "multiswipe" then
+        return pos.x == state.start_x and pos.y == state.start_y
+    end
+    local slop = state.key.dimen.h
+    return math.abs(pos.x - state.last.x) <= slop
+        and math.abs(pos.y - state.last.y) <= slop
 end
 
 -- Key height before scaling, and key font size when the text size is
@@ -105,12 +217,29 @@ function KeyAdapter:wrappers()
                         range = key.dimen,
                     },
                 }
+                if adapter:isSpaceKey(key) and adapter:spaceCursorEnabled() then
+                    key.ges_events.SpaceCursorPan = {
+                        adapter.gesture_range:new{
+                            ges = "pan",
+                            range = function() return key.keyboard.dimen end,
+                        },
+                    }
+                end
+            end
+        end,
+
+        onSpaceCursorPan = function()
+            return function(key, _, ges)
+                return adapter:moveSpaceCursor(key, ges)
             end
         end,
 
         onSwipeKey = function(original)
             return function(key, arg, ges)
                 local keyboard = key.keyboard
+                if adapter:finishSpaceCursor(keyboard, ges) then
+                    return true
+                end
                 if keyboard and keyboard:isSwypeMvpEnabled() then
                     if adapter:isTextKey(key) then
                         keyboard:onSwypeWordSwipe(arg, ges, key)
@@ -141,6 +270,9 @@ function KeyAdapter:wrappers()
         onPanReleaseKey = function(original)
             return function(key, arg, ges)
                 local keyboard = key.keyboard
+                if adapter:finishSpaceCursor(keyboard, ges) then
+                    return true
+                end
                 if keyboard and keyboard:isSwypeMvpEnabled()
                         and keyboard:onSwypeWordPanRelease(arg, ges) then
                     return true
@@ -189,7 +321,7 @@ function KeyAdapter:ensureInstalled()
         local current = rawget(VirtualKey, name)
         if current == nil or current ~= self.installed[name] then
             local original = VirtualKey[name]
-            if name ~= "onMultiswipeKey" then
+            if not OPTIONAL_METHODS[name] then
                 assert(original, "Tapless: VirtualKey." .. name .. " missing")
             end
             local wrapped = self:_guard(name, build(original), original)

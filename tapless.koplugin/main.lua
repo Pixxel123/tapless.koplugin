@@ -178,6 +178,18 @@ function Tapless:addToMainMenu(menu_items)
                     },
                 },
             },
+            {
+                text = "Slide on space to move cursor",
+                help_text = "Slide left or right along the space bar to "
+                    .. "move the text cursor. Holding space still switches "
+                    .. "language.",
+                checked_func = function()
+                    return G_reader_settings:isTrue("tapless_space_cursor")
+                end,
+                callback = function()
+                    G_reader_settings:flipNilOrFalse("tapless_space_cursor")
+                end,
+            },
         },
     }
 end
