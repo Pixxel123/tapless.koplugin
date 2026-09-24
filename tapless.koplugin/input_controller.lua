@@ -256,6 +256,38 @@ function InputController:blockCandidate(keyboard, candidate)
     return true
 end
 
+-- Punctuation that is followed by a space, so a word after it still gets
+-- one.
+local SPACED_PUNCTUATION = {
+    ["."] = true, [","] = true, ["!"] = true, ["?"] = true,
+    [":"] = true, [";"] = true, [")"] = true,
+}
+
+-- True when a swiped word would land right after the end of a word with
+-- no pending space to separate them: a tapped word never marks one, and
+-- a stray character or an extra backspace can use one up.
+function InputController:_gluedToPreviousWord(keyboard)
+    local inputbox = keyboard.inputbox
+    if not inputbox.getChar then
+        return false
+    end
+    local profile = keyboard.swype_mvp_normalization_profile
+    local last = inputbox:getChar(-1)
+    if not last then
+        return false
+    end
+    local next_char = inputbox:getChar(0)
+    if next_char and (self.normalization:normalizeChar(next_char, profile)
+                ~= nil or next_char:match("^%d$") ~= nil) then
+        -- The cursor is inside a word (after a space-cursor slide, say);
+        -- a space in front would not make a word boundary there either.
+        return false
+    end
+    return SPACED_PUNCTUATION[last] == true
+        or self.normalization:normalizeChar(last, profile) ~= nil
+        or last:match("^%d$") ~= nil
+end
+
 function InputController:insertBestAndShowCandidates(
         keyboard, signature, candidates, previous_word)
     if not candidates or #candidates == 0 then
@@ -268,7 +300,8 @@ function InputController:insertBestAndShowCandidates(
     local inserted = keyboard.swype_mvp_session:recordInsert(
         signature, candidates, previous_word)
     self.logger.dbg("swype mvp best", signature, "=>", candidates[1].word)
-    if self:_takePendingSpace(keyboard) then
+    local pending_space = self:_takePendingSpace(keyboard)
+    if pending_space or self:_gluedToPreviousWord(keyboard) then
         keyboard.inputbox:addChars(" ")
     end
     keyboard.inputbox:addChars(inserted)
@@ -370,13 +403,6 @@ function InputController:_takePendingSpace(keyboard)
     return pending ~= nil and pending.inputbox == keyboard.inputbox
         and pending.charpos == keyboard.inputbox.charpos
 end
-
--- Punctuation that is followed by a space, so a word after it still gets
--- one.
-local SPACED_PUNCTUATION = {
-    ["."] = true, [","] = true, ["!"] = true, ["?"] = true,
-    [":"] = true, [";"] = true, [")"] = true,
-}
 
 function InputController:_takeDoubleSpace(keyboard, key)
     local charpos = keyboard.swype_mvp_space_charpos
