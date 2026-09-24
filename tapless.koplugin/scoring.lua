@@ -1,12 +1,12 @@
 local Scoring = {
     EDIT_DISTANCE_MAX = 2,
-    SCORE_UNIT = 3000,
+    SCORE_UNIT = 949,
     -- Short words this rare are mostly abbreviations and fragments nobody
     -- swipes, but they can explain a long swipe by skipping most of it.
     RARE_SHORT_LENGTH = 3,
     RARE_SHORT_FREQ = 2600,
-    RARE_SHORT_COST = 4,
-    REPEAT_BONUS = 4500,
+    RARE_SHORT_COST = 3.29,
+    REPEAT_BONUS = 3354,
     -- Cost of a word whose first letter is not the key the swipe started
     -- on, when the trace crosses that letter later.
     FIRST_LETTER_COST = 6,

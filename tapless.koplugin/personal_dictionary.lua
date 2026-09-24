@@ -8,7 +8,7 @@ local PersonalDictionary = {}
 PersonalDictionary.__index = PersonalDictionary
 
 local MAX_WORDS = 5000
-local PERSONAL_FREQUENCY = 6000
+local PERSONAL_FREQUENCY = 4500
 
 function PersonalDictionary:new(normalization, dictionary_index, root)
     return setmetatable({
