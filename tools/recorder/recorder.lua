@@ -21,6 +21,7 @@ function Recorder:new(options)
         candidate_list = nil,
         dispatched_list = {},
         last_attempt = nil,
+        held = nil,
         finished = false,
     }, self)
 end
@@ -64,6 +65,11 @@ function Recorder.parsePrompts(lines, mode)
     return prompts
 end
 
+-- Prompts are lowercase words; Tapless may capitalise what it types.
+local function sameWord(word, target)
+    return word ~= nil and target ~= nil and word:lower() == target:lower()
+end
+
 function Recorder:promptText()
     local prompt = self.prompts[self.position]
     if not prompt then
@@ -83,7 +89,15 @@ function Recorder:promptText()
 end
 
 function Recorder:showPrompt()
-    self.show(self:promptText())
+    local held = self.held
+    local prompt = self.prompts[self.position]
+    if held and prompt then
+        self.show(string.format(
+            'Typed "%s", not "%s": delete it or pick "%s"\n%s',
+            held.word, prompt.target, prompt.target, self:promptText()))
+    else
+        self.show(self:promptText())
+    end
 end
 
 function Recorder:start(info)
@@ -183,6 +197,13 @@ function Recorder:finalize(signature, trace_info, context)
     local short = #signature < 2
     local inserted = not short and candidates[1]
         and candidates[1].word or nil
+    -- true or false when a word was typed, nil when none was. (Not an
+    -- and/or expression: `inserted and false or nil` would give nil.)
+    local matched
+    if inserted then
+        matched = sameWord(inserted, prompt and prompt.target)
+    end
+    local after_uncorrected = self.held and self.held.id or nil
     local id = self.next_id
     self.next_id = id + 1
     self.write{
@@ -199,6 +220,9 @@ function Recorder:finalize(signature, trace_info, context)
         released = trace_info and trace_info.released or false,
         candidates = candidates,
         inserted = inserted,
+        matched = matched,
+        word_index = prompt and prompt.word_index,
+        after_uncorrected = after_uncorrected,
         short = short,
         gestures = self.dispatched_list,
     }
@@ -206,8 +230,14 @@ function Recorder:finalize(signature, trace_info, context)
     self:dropGesture()
     self.dispatched_list = {}
     self.candidate_list = nil
-    if inserted then
+    -- In a sentence the tester reads on from what is typed, so moving
+    -- on past a wrong word would label later swipes with the wrong word.
+    if inserted and (matched or self.mode ~= "sentences") then
+        self.held = nil
         self:advance()
+    elseif inserted then
+        self.held = { id = id, word = inserted }
+        self:showPrompt()
     else
         self:showPrompt()
     end
@@ -243,6 +273,11 @@ function Recorder:picked(index, word)
         index = index,
         word = word,
     }
+    local prompt = self.prompts[self.position]
+    if self.held and sameWord(word, prompt and prompt.target) then
+        self.held = nil
+        self:advance()
+    end
 end
 
 -- The swiped word was removed with backspace: ask for it again.
@@ -252,6 +287,7 @@ function Recorder:deleted()
         return
     end
     self.last_attempt = nil
+    self.held = nil
     self.write{ type = "outcome", id = last.id, outcome = "deleted" }
     if not self.finished then
         self.position = last.position
