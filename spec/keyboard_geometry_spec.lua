@@ -66,6 +66,20 @@ it("starts a swipe that lands on a number-row key on the letter below",
     T.eq(letter, "q", "even high in the number row")
 end)
 
+it("counts the shift layer's number row, whose keys carry the digit as alternate",
+        function()
+    local geometry = KeyboardGeometry:new(T.normalization)
+    local layout = newNumberRowLayout()
+    layout[1][2].key = "@"
+    layout[1][2].alt_label = "2"
+    local letter, key = geometry:startKeyAt(layout, { x = 150, y = 90 })
+    T.eq(letter, "w")
+    T.eq(key.key, "w")
+    layout[1][2].alt_label = "!"
+    T.eq(geometry:startKeyAt(layout, { x = 150, y = 90 }), nil,
+        "a symbol key with no digit is not a number key")
+end)
+
 it("still takes a number-row key as no letter when only asked what is there",
         function()
     local geometry = KeyboardGeometry:new(T.normalization)

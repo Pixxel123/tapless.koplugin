@@ -90,8 +90,14 @@ it("sends letter swipes to Tapless and other keys to KOReader", function()
 end)
 
 -- A keyboard whose word swipe handlers report whether Tapless took the swipe.
-local function newSwipeKeyboard(calls, takes)
+-- starts_on_letter says whether a swipe that begins on the key under the
+-- finger counts as starting on a letter, as it does for a number key.
+local function newSwipeKeyboard(calls, starts_on_letter, takes)
     local keyboard = newKeyboard(calls)
+    keyboard._swypeStartKeyAt = function(_, pos)
+        calls.start_looked_up = pos
+        return starts_on_letter and "w" or nil
+    end
     keyboard.onSwypeWordSwipe = function()
         calls.tapless_swipe = (calls.tapless_swipe or 0) + 1
         return takes
@@ -106,54 +112,44 @@ local function newSwipeKeyboard(calls, takes)
     return keyboard
 end
 
-it("sends a swipe from a number key to Tapless when it takes the swipe",
-        function()
+local START = { x = 150, y = 90 }
+
+it("sends a swipe that starts on a letter's number key to Tapless", function()
     local calls, VirtualKey = setup()
-    local keyboard = newSwipeKeyboard(calls, true)
-    local key = VirtualKey:new{ key = "5", keyboard = keyboard }
-    T.truthy(key:onSwipeKey({}, { direction = "east" }))
-    T.truthy(key:onMultiswipeKey({}, { direction = "southwest" }))
+    local keyboard = newSwipeKeyboard(calls, true, true)
+    local key = VirtualKey:new{ key = "2", keyboard = keyboard }
+    T.truthy(key:onSwipeKey({}, { pos = START }))
+    T.truthy(key:onMultiswipeKey({}, { start_pos = START }))
     T.eq(calls.tapless_swipe, 1, "Tapless swipes")
     T.eq(calls.tapless_multiswipe, 1, "Tapless multiswipes")
     T.eq(calls.stock_swipe, nil, "stock swipes")
+    T.eq(calls.start_looked_up, START, "where the swipe started")
 end)
 
-it("leaves a number key's swipe to KOReader when Tapless does not take it",
+it("hands a number key's swipe back to KOReader when Tapless declines it",
         function()
     local calls, VirtualKey = setup()
-    local keyboard = newSwipeKeyboard(calls, false)
+    local keyboard = newSwipeKeyboard(calls, true, false)
     keyboard.swype_mvp_trace = {}
-    VirtualKey:new{ key = "5", keyboard = keyboard }
-        :onSwipeKey({}, { direction = "east" })
+    VirtualKey:new{ key = "2", keyboard = keyboard }
+        :onSwipeKey({}, { pos = START, direction = "southeast" })
+    T.eq(calls.tapless_swipe, 1, "Tapless tried the swipe")
     T.eq(calls.stock_swipe, 1, "stock swipes")
     T.eq(calls.reset, 1, "half-built trace dropped")
-end)
-
-it("keeps an upward swipe on a number key for its alternate character",
-        function()
-    local calls, VirtualKey = setup()
-    local keyboard = newSwipeKeyboard(calls, true)
-    keyboard.swype_mvp_trace = {}
-    VirtualKey:new{ key = "5", keyboard = keyboard }
-        :onSwipeKey({}, { direction = "north" })
-    T.eq(calls.stock_swipe, 1, "stock swipes")
-    T.eq(calls.tapless_swipe, nil, "Tapless swipes")
-    T.eq(calls.reset, 1, "trace dropped")
 end)
 
 it("keeps a number key's alternate-character swipe callback", function()
     local calls, VirtualKey = setup()
     local keyboard = newKeyboard(calls)
-    T.truthy(VirtualKey:new{ key = "5", keyboard = keyboard }.swipe_callback)
+    T.truthy(VirtualKey:new{ key = "2", keyboard = keyboard }.swipe_callback)
 end)
 
-it("leaves swipes from keys that are not numbers to KOReader", function()
+it("leaves swipes that do not start on a letter to KOReader", function()
     local calls, VirtualKey = setup()
-    local keyboard = newSwipeKeyboard(calls, true)
+    local keyboard = newSwipeKeyboard(calls, false, true)
     VirtualKey:new{ key = "\n", keyboard = keyboard }
-        :onSwipeKey({}, { direction = "east" })
-    VirtualKey:new{ key = "55", keyboard = keyboard }
-        :onSwipeKey({}, { direction = "east" })
+        :onSwipeKey({}, { pos = START })
+    VirtualKey:new{ key = "\n", keyboard = keyboard }:onSwipeKey({}, {})
     T.eq(calls.stock_swipe, 2, "stock swipes")
     T.eq(calls.tapless_swipe, nil, "Tapless swipes")
 end)
@@ -161,10 +157,10 @@ end)
 it("leaves number key swipes to KOReader when word swipes are off",
         function()
     local calls, VirtualKey = setup()
-    local keyboard = newSwipeKeyboard(calls, true)
+    local keyboard = newSwipeKeyboard(calls, true, true)
     keyboard.isSwypeMvpEnabled = function() return false end
-    VirtualKey:new{ key = "5", keyboard = keyboard }
-        :onSwipeKey({}, { direction = "east" })
+    VirtualKey:new{ key = "2", keyboard = keyboard }
+        :onSwipeKey({}, { pos = START })
     T.eq(calls.stock_swipe, 1, "stock swipes")
     T.eq(calls.tapless_swipe, nil, "Tapless swipes")
 end)

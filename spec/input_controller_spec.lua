@@ -46,7 +46,7 @@ it("types a one-letter trace as a tap once the finger lifts", function()
     T.eq(state.recorded, nil, "no leftover swipe state")
 end)
 
-it("types the number key a one-letter trace began on, not the letter below",
+it("leaves a slide from a number key that crossed no other letter to KOReader",
         function()
     local state = {}
     local keyboard = newKeyboard(state)
@@ -54,7 +54,9 @@ it("types the number key a one-letter trace began on, not the letter below",
         key = "5",
         onTapSelect = function() state.typed = "5" end,
     }
-    -- The first point lies on a number key, which is no letter.
+    -- The swipe counted as starting on "t", but its first point lies on
+    -- a number key, which is no letter: a tap, or a flick for the key's
+    -- alternate character, and KOReader knows which.
     keyboard._swypeKeyAt = function(_, pos)
         if pos then return nil, number_key end
     end
@@ -62,8 +64,9 @@ it("types the number key a one-letter trace began on, not the letter below",
         letter_points = { { x = 1, y = 1 } },
         released = true,
     })
-    T.truthy(handled)
-    T.eq(state.typed, "5", "typed")
+    T.eq(handled, false)
+    T.eq(state.typed, nil, "typed by Tapless")
+    T.eq(state.recorded, nil, "no leftover swipe state")
 end)
 
 it("ignores a one-letter trace finalized by the idle timer", function()

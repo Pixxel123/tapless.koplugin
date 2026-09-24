@@ -89,7 +89,7 @@ it("starts a swipe gesture from the number row on the letter below",
     T.eq(keyboard.finalized[1].signature, "ea")
 end)
 
-it("keeps the number key for a slide from it that crosses no other letter",
+it("leaves the first point on the number key, so a short slide from it is known",
         function()
     local keyboard = newKeyboard(newLayout())
     local controller = newController()

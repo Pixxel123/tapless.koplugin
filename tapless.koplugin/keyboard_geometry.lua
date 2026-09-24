@@ -41,9 +41,13 @@ function KeyboardGeometry:keyAt(layout, pos, profile)
     end
 end
 
+-- A number key, or the shift layer's symbol on the same key, which has the
+-- digit as its alternate label.
 local function isNumberKey(key)
-    return not key.is_swype_candidate and type(key.key) == "string"
-        and key.key:match("^%d$") ~= nil
+    return not key.is_swype_candidate
+        and ((type(key.key) == "string" and key.key:match("^%d$") ~= nil)
+            or (type(key.alt_label) == "string"
+                and key.alt_label:match("^%d$") ~= nil))
 end
 
 -- The key a swipe started on. A finger aiming at a key on the top letter
