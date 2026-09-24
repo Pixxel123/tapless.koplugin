@@ -1,6 +1,15 @@
 local RecognitionEngine = {}
 RecognitionEngine.__index = RecognitionEngine
 
+-- Words that differ only in doubled letters ("we", "wwe", "wee") share a
+-- gesture signature; at most this many of them take a place in the row.
+RecognitionEngine.MAX_SAME_SHAPE = 2
+
+-- A letter three times in a row ("tooo") marks a spelling nobody means.
+local function tripled(word)
+    return word:find("(%a)%1%1") ~= nil
+end
+
 local DYNAMIC_CANDIDATE_LIMIT = 40
 local GEOMETRY_CANDIDATE_LIMIT = 12
 
@@ -156,13 +165,10 @@ function RecognitionEngine:pickCandidates(options)
     end
     if #results > 0 then
         if self.geometry_reranker then
-            return self.geometry_reranker:rerank(
-                results, trace_info, key_centers, limit)
+            results = self.geometry_reranker:rerank(
+                results, trace_info, key_centers, #results)
         end
-        while #results > limit do
-            table.remove(results)
-        end
-        return results
+        return self:fillRow(results, limit)
     end
 
     local fallback = {}
@@ -176,6 +182,31 @@ function RecognitionEngine:pickCandidates(options)
         }
     end
     return fallback
+end
+
+-- The suggestion row: candidates in rank order, leaving out spellings
+-- that only repeat letters of a word already shown. If that leaves out
+-- everything, the best candidates are shown as they are.
+function RecognitionEngine:fillRow(candidates, limit)
+    local row, shapes = {}, {}
+    for _, candidate in ipairs(candidates) do
+        if #row >= limit then
+            break
+        end
+        local word = (candidate.word or ""):lower()
+        local shape = candidate.gesture_signature or word
+        local count = shapes[shape] or 0
+        if not tripled(word) and count < self.MAX_SAME_SHAPE then
+            shapes[shape] = count + 1
+            row[#row + 1] = candidate
+        end
+    end
+    if #row == 0 then
+        for index = 1, math.min(limit, #candidates) do
+            row[index] = candidates[index]
+        end
+    end
+    return row
 end
 
 return RecognitionEngine

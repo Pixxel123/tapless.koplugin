@@ -259,3 +259,29 @@ it("never suggests a blocked word", function()
         T.truthy(result.word ~= "was", "blocked word suggested")
     end
 end)
+
+local function rowOf(words, limit)
+    local engine = T.load("recognition_engine")
+    local candidates = {}
+    for index, item in ipairs(words) do
+        candidates[index] = { word = item[1], gesture_signature = item[2] }
+    end
+    local list = {}
+    for index, candidate in ipairs(engine.fillRow(engine, candidates,
+            limit)) do
+        list[index] = candidate.word
+    end
+    return table.concat(list, ",")
+end
+
+it("leaves spellings that only repeat letters out of the row", function()
+    T.eq(rowOf({ { "to", "to" }, { "too", "to" }, { "tooo", "to" },
+        { "top", "top" }, { "tip", "tip" } }, 4), "to,too,top,tip")
+    T.eq(rowOf({ { "we", "we" }, { "wwe", "we" }, { "wee", "we" },
+        { "west", "west" } }, 4), "we,wwe,west")
+end)
+
+it("keeps a word in the row when every candidate repeats a letter",
+        function()
+    T.eq(rowOf({ { "zzz", "z" }, { "zzzz", "z" } }, 4), "zzz,zzzz")
+end)
