@@ -299,17 +299,41 @@ function Replay.run(plugin, attempt)
         bonus = bonus }
 end
 
--- Learns attempt's target as following its previous word, in
--- plugin.context_model, when both the model and a previous word
--- exist. No-op otherwise. Lowercases the target; the device instead
--- learns the chosen candidate in its dictionary casing, so a
--- capitalised dictionary word would get no bonus here (moot for now:
--- session words are all lowercase).
+-- How many uses a word picked from the suggestions earns on the device.
+Replay.PICK_USES = 2
+
+-- The word the device keeps from attempt, and the uses it earns: nothing
+-- for a word deleted again, 2 for a pick, 1 for the first choice left in
+-- the text, right or wrong.
+function Replay.kept(attempt)
+    if attempt.deleted or attempt.short then
+        return nil
+    end
+    if attempt.picked then
+        return attempt.picked, Replay.PICK_USES
+    end
+    if attempt.inserted then
+        return attempt.inserted, 1
+    end
+end
+
+-- Learns what the device learns from attempt: the kept word, as following
+-- the previous word in plugin.context_model when there is a model and a
+-- previous word, and its uses in plugin.usage_model. No-op otherwise. Pairs
+-- are lowercased; the device learns the chosen candidate in its dictionary
+-- casing, so a capitalised dictionary word would get no pair bonus here
+-- (moot for now: session words are all lowercase).
 function Replay.learn(plugin, attempt)
+    local word, uses = Replay.kept(attempt)
+    if not word then
+        return
+    end
     local previous_word = attempt.previous_word
-    if plugin.context_model and previous_word and attempt.target then
-        plugin.context_model:learn(previous_word:lower(),
-            attempt.target:lower())
+    if plugin.context_model and previous_word then
+        plugin.context_model:learn(previous_word:lower(), word:lower())
+    end
+    if plugin.usage_model then
+        plugin.usage_model:learn(word, uses)
     end
 end
 
@@ -533,6 +557,9 @@ function Replay.readSessions(paths, json, options)
     local attempts, left_out = {}, {}
     for session, path in ipairs(paths) do
         local mode = "words"
+        -- Outcomes name their attempt by id, and ids start again at 1 in
+        -- each session.
+        local by_id = {}
         for line in io.lines(path) do
             local record = json.decode(line)
             if record and record.type == "start" then
@@ -540,11 +567,21 @@ function Replay.readSessions(paths, json, options)
             elseif record and record.type == "attempt" and record.target then
                 record.mode = mode
                 record.session = session
+                if record.id then
+                    by_id[record.id] = record
+                end
                 local reason = not keep and Replay.auditAttempt(record)
                 if reason then
                     left_out[reason] = (left_out[reason] or 0) + 1
                 else
                     attempts[#attempts + 1] = record
+                end
+            elseif record and record.type == "outcome"
+                    and by_id[record.id] then
+                if record.outcome == "picked" then
+                    by_id[record.id].picked = record.word
+                elseif record.outcome == "deleted" then
+                    by_id[record.id].deleted = true
                 end
             end
         end

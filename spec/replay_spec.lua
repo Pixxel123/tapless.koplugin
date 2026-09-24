@@ -6,8 +6,11 @@ local Replay = dofile(T.plugin_dir .. "/../tools/replay.lua")
 local CleanSwipes = dofile(T.plugin_dir .. "/../tools/clean_swipes.lua")
 local keys = CleanSwipes.defaultKeys
 
+-- A recorded swipe whose first choice was the word and stayed in the text.
 local function attemptFor(word)
-    return CleanSwipes.attempt(word, keys())
+    local attempt = CleanSwipes.attempt(word, keys())
+    attempt.inserted = word
+    return attempt
 end
 
 local plugin = Replay.loadPlugin(T.plugin_dir)
@@ -119,6 +122,38 @@ it("learns the intended word after its swipe", function()
     Replay.learn(plugin, attempt)  -- no context model: no error
 end)
 
+it("learns the word the device kept, not the intended one", function()
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    local attempt = attemptFor("water")
+    attempt.previous_word = "the"
+    attempt.inserted = "wafer"
+    Replay.learn(with_context, attempt)
+    T.truthy(with_context.context_model:bonus("the", "wafer") > 0,
+        "the -> wafer learned")
+    T.eq(with_context.context_model:bonus("the", "water"), 0)
+end)
+
+it("learns nothing from a word that was deleted again", function()
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    local attempt = attemptFor("water")
+    attempt.previous_word = "the"
+    attempt.deleted = true
+    Replay.learn(with_context, attempt)
+    T.eq(with_context.context_model:bonus("the", "water"), 0)
+end)
+
+it("counts a pick twice and the first choice once", function()
+    local word, uses = Replay.kept({ inserted = "wafer", picked = "water" })
+    T.eq(word, "water")
+    T.eq(uses, 2)
+    word, uses = Replay.kept({ inserted = "wafer" })
+    T.eq(word, "wafer")
+    T.eq(uses, 1)
+    T.eq(Replay.kept({ inserted = "wafer", deleted = true }), nil)
+    T.eq(Replay.kept({ short = true }), nil)
+    T.eq(Replay.kept({}), nil)
+end)
+
 it("classifies a loss stage before its own pair is learned, but "
         .. "after an earlier attempt's", function()
     local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
@@ -197,4 +232,33 @@ it("reads sessions and leaves out suspect attempts", function()
     local all = Replay.readSessions({ path }, json, { keep_suspect = true })
     T.eq(#all, 3)
     os.remove(path)
+end)
+
+it("attaches a pick and a deletion to their own attempt", function()
+    local path = os.tmpname()
+    local file = assert(io.open(path, "w"))
+    file:write("one\npick\ntwo\ndeleted\nnext\n")
+    file:close()
+    local function attempt(id, target)
+        return { type = "attempt", id = id, target = target, keys = {} }
+    end
+    local records = {
+        one = attempt(1, "water"),
+        pick = { type = "outcome", id = 1, outcome = "picked",
+            word = "wafer" },
+        two = attempt(2, "hello"),
+        deleted = { type = "outcome", id = 2, outcome = "deleted" },
+        -- A new session starts its ids again at 1.
+        next = attempt(1, "world"),
+    }
+    local json = { decode = function(line) return records[line] end }
+    local attempts = Replay.readSessions({ path, path }, json,
+        { keep_suspect = true })
+    os.remove(path)
+    T.eq(#attempts, 6)
+    T.eq(attempts[1].picked, "wafer")
+    T.eq(attempts[1].deleted, nil)
+    T.eq(attempts[2].deleted, true)
+    T.eq(attempts[2].picked, nil)
+    T.eq(attempts[3].picked, nil, "the next session's attempt 1 is its own")
 end)
