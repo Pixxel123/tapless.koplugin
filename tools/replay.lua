@@ -1,8 +1,8 @@
 -- Replays recorded Tapless swipe test sessions through a plugin
 -- directory's recognition code and reports accuracy.
 --
--- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--misses]
---     [--losses] SESSION.jsonl...
+-- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
+--     [--misses] [--losses] SESSION.jsonl...
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 
@@ -21,6 +21,14 @@ end
 package.preload["util"] = package.preload["util"] or function()
     return { splitToChars = splitToChars }
 end
+package.preload["ffi/utf8proc"] = package.preload["ffi/utf8proc"] or
+    function()
+        return { lowercase_dumb = function(text) return text:lower() end }
+    end
+package.preload["datastorage"] = package.preload["datastorage"] or
+    function()
+        return { getDataDir = function() return "." end }
+    end
 
 local Replay = {}
 
@@ -40,8 +48,9 @@ local function readManifest(path)
     return manifest
 end
 
--- Loads a plugin directory's recognition modules.
-function Replay.loadPlugin(plugin_dir)
+-- Loads a plugin directory's recognition modules. options.personal_dir,
+-- if given, wires up a personal dictionary read from that folder.
+function Replay.loadPlugin(plugin_dir, options)
     local function load(name)
         return dofile(plugin_dir .. "/" .. name .. ".lua")
     end
@@ -80,6 +89,9 @@ function Replay.loadPlugin(plugin_dir)
     }
     local store = load("dictionary_store"):new(plugin_dir, registry,
         load("dictionary_index"), time_api)
+    local personal_dictionary = options and options.personal_dir
+        and load("personal_dictionary"):new(normalization,
+            load("dictionary_index"), options.personal_dir)
     return {
         dir = plugin_dir,
         manifest = manifest,
@@ -89,7 +101,8 @@ function Replay.loadPlugin(plugin_dir)
         gesture_controller = load("gesture_controller"),
         engine = load("recognition_engine"):new(store,
             load("scoring"):new(normalization),
-            load("geometry_reranker"):new()),
+            load("geometry_reranker"):new(),
+            personal_dictionary),
     }
 end
 
@@ -198,15 +211,16 @@ function Replay.run(plugin, attempt)
     end
     local signature = finalized and finalized.signature or ""
     if #signature < 2 then
-        return { short = true, letters = signature, words = {} }
+        return { short = true, letters = signature, words = {},
+            personal = {} }
     end
     local trace_info = finalized.trace_info
     local geometry = plugin.geometry
     local start = trace_info.points and trace_info.points[1]
-    -- No context_bonus and no personal dictionary here: replay does not
-    -- reproduce the device's saved word-pair learning or personal words
-    -- (a stated not-goal), so device accuracy can drift above replay's,
-    -- especially over repeated sessions with the same sentence pool.
+    -- No context_bonus here: replay does not reproduce the device's
+    -- saved word-pair learning (a stated not-goal), so device accuracy
+    -- can drift above replay's, especially over repeated sessions with
+    -- the same sentence pool. Personal words come in with --personal.
     local candidates = plugin.engine:pickCandidates{
         signature = signature,
         limit = 4,
@@ -222,11 +236,12 @@ function Replay.run(plugin, attempt)
         end,
         normalization_profile = profile,
     }
-    local words = {}
+    local words, personal = {}, {}
     for index, candidate in ipairs(candidates) do
         words[index] = candidate.word
+        personal[index] = candidate.personal == true
     end
-    return { letters = signature, words = words }
+    return { letters = signature, words = words, personal = personal }
 end
 
 -- The stages a swipe's intended word passes on its way to first place,
@@ -430,6 +445,7 @@ local function main(args)
     local plugin_dir = tools_dir .. "/../tapless.koplugin"
     local compare_dir, show_misses, show_losses, paths = nil, false, false,
         {}
+    local personal_dir
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -439,6 +455,9 @@ local function main(args)
         elseif value == "--compare" then
             index = index + 1
             compare_dir = args[index]
+        elseif value == "--personal" then
+            index = index + 1
+            personal_dir = args[index]
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -450,7 +469,8 @@ local function main(args)
     end
     if #paths == 0 then
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
-            .. "[--compare DIR] [--misses] [--losses] SESSION.jsonl...\n")
+            .. "[--compare DIR] [--personal DIR] [--misses] [--losses] "
+            .. "SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -462,15 +482,22 @@ local function main(args)
     end
 
     local attempts = readSessions(paths, json)
-    local plugin = Replay.loadPlugin(plugin_dir)
-    local other = compare_dir and Replay.loadPlugin(compare_dir)
+    local options = personal_dir and { personal_dir = personal_dir }
+    local plugin = Replay.loadPlugin(plugin_dir, options)
+    local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
     local changes = { fixed = {}, broke = {} }
+    local personal_first, personal_first_before = 0, 0
     for _, attempt in ipairs(attempts) do
         local result = Replay.run(plugin, attempt)
         if result.short then
             short = short + 1
         else
+            local target = attempt.target:lower()
+            if result.personal[1] and (result.words[1] or ""):lower()
+                    ~= target then
+                personal_first = personal_first + 1
+            end
             local device_words = {}
             for position, candidate in ipairs(attempt.candidates or {}) do
                 device_words[position] = candidate.word
@@ -493,6 +520,10 @@ local function main(args)
             if other then
                 local before = Replay.run(other, attempt)
                 before.target = attempt.target
+                if not before.short and before.personal[1]
+                        and (before.words[1] or ""):lower() ~= target then
+                    personal_first_before = personal_first_before + 1
+                end
                 local was = not before.short and hit(before, 1)
                 local now = hit(row, 1)
                 if now and not was then
@@ -532,6 +563,16 @@ local function main(args)
         local theirs = Replay.summarize(device, grouping[2])
         for _, name in ipairs(ours.order) do
             line("  " .. name, ours.groups[name], theirs.groups[name])
+        end
+    end
+    if personal_dir then
+        if other then
+            print(string.format("\nPersonal words put first over the "
+                .. "intended word: %d (was %d)", personal_first,
+                personal_first_before))
+        else
+            print(string.format("\nPersonal words put first over the "
+                .. "intended word: %d", personal_first))
         end
     end
 
