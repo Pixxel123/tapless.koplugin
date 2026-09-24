@@ -167,8 +167,6 @@ it("names why a recorded attempt should be left out", function()
         previous_word = "ulike", keys = {} }), nil)
     T.eq(Replay.auditAttempt({ mode = "sentences", target = "like",
         previous_word = "uLike", keys = {} }), "target already typed")
-    T.eq(Replay.auditAttempt({ mode = "sentences", target = "to",
-        after_uncorrected = 3, keys = {} }), "after an uncorrected word")
     T.eq(Replay.auditAttempt({ mode = "words", target = "please",
         keys = { { x = 0, y = 0 }, { x = 0, y = 0 },
             { x = 5, y = 5, candidate = true } } }), "keys not laid out")

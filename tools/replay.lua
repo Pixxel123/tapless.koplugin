@@ -497,7 +497,7 @@ Replay.hit = hit
 -- the swipe was recognised, which would leave out real misses:
 -- keys all at one point were read while the keyboard was being rebuilt;
 -- a sentence swipe whose target the text box already ends with was for
--- a later word; so may be a swipe made while a wrong word was left in.
+-- a later word.
 function Replay.auditAttempt(attempt)
     local keys = {}
     for _, key in ipairs(attempt.keys or {}) do
@@ -516,9 +516,6 @@ function Replay.auditAttempt(attempt)
         if same then
             return "keys not laid out"
         end
-    end
-    if attempt.after_uncorrected then
-        return "after an uncorrected word"
     end
     local target = (attempt.target or ""):lower()
     local previous = (attempt.previous_word or ""):lower()

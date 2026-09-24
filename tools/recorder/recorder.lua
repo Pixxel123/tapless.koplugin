@@ -21,7 +21,6 @@ function Recorder:new(options)
         candidate_list = nil,
         dispatched_list = {},
         last_attempt = nil,
-        held = nil,
         finished = false,
     }, self)
 end
@@ -89,15 +88,7 @@ function Recorder:promptText()
 end
 
 function Recorder:showPrompt()
-    local held = self.held
-    local prompt = self.prompts[self.position]
-    if held and prompt then
-        self.show(string.format(
-            'Typed "%s", not "%s": delete it or pick "%s"\n%s',
-            held.word, prompt.target, prompt.target, self:promptText()))
-    else
-        self.show(self:promptText())
-    end
+    self.show(self:promptText())
 end
 
 function Recorder:start(info)
@@ -203,7 +194,6 @@ function Recorder:finalize(signature, trace_info, context)
     if inserted then
         matched = sameWord(inserted, prompt and prompt.target)
     end
-    local after_uncorrected = self.held and self.held.id or nil
     local id = self.next_id
     self.next_id = id + 1
     self.write{
@@ -222,7 +212,6 @@ function Recorder:finalize(signature, trace_info, context)
         inserted = inserted,
         matched = matched,
         word_index = prompt and prompt.word_index,
-        after_uncorrected = after_uncorrected,
         short = short,
         gestures = self.dispatched_list,
     }
@@ -230,14 +219,10 @@ function Recorder:finalize(signature, trace_info, context)
     self:dropGesture()
     self.dispatched_list = {}
     self.candidate_list = nil
-    -- In a sentence the tester reads on from what is typed, so moving
-    -- on past a wrong word would label later swipes with the wrong word.
-    if inserted and (matched or self.mode ~= "sentences") then
-        self.held = nil
+    -- Any typed word moves on, even a wrong one: `matched` notes which,
+    -- and tools/replay.lua leaves out swipes that ran ahead of their label.
+    if inserted then
         self:advance()
-    elseif inserted then
-        self.held = { id = id, word = inserted }
-        self:showPrompt()
     else
         self:showPrompt()
     end
@@ -273,11 +258,6 @@ function Recorder:picked(index, word)
         index = index,
         word = word,
     }
-    local prompt = self.prompts[self.position]
-    if self.held and sameWord(word, prompt and prompt.target) then
-        self.held = nil
-        self:advance()
-    end
 end
 
 -- The swiped word was removed with backspace: ask for it again.
@@ -287,7 +267,6 @@ function Recorder:deleted()
         return
     end
     self.last_attempt = nil
-    self.held = nil
     self.write{ type = "outcome", id = last.id, outcome = "deleted" }
     if not self.finished then
         self.position = last.position
