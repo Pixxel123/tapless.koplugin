@@ -53,6 +53,8 @@ function RecognitionEngine:pickCandidates(options)
                 local context_bonus = options.context_bonus
                     and options.context_bonus(
                         trace_info and trace_info.previous_word, entry.word) or 0
+                local uses = options.word_uses
+                    and options.word_uses(entry.word) or 0
                 local spatial_score, ranked_score, used_near =
                     self.scoring:scoreEntry(
                     signature,
@@ -64,7 +66,8 @@ function RecognitionEngine:pickCandidates(options)
                     allow_endpoint_mismatch,
                     context_bonus,
                     allow_start_mismatch,
-                    near)
+                    near,
+                    uses)
                 if spatial_score <= max_spatial then
                     self.scoring:addCandidate(shortlist, seen, entry,
                         spatial_score, ranked_score,
@@ -73,6 +76,7 @@ function RecognitionEngine:pickCandidates(options)
                             allow_start_mismatch = allow_start_mismatch,
                             allow_near = used_near,
                             context_bonus = context_bonus,
+                            uses = uses,
                             entry = entry,
                         })
                 end
@@ -155,7 +159,8 @@ function RecognitionEngine:pickCandidates(options)
                 metadata.allow_endpoint_mismatch,
                 metadata.context_bonus,
                 metadata.allow_start_mismatch,
-                metadata.allow_near and near or nil)
+                metadata.allow_near and near or nil,
+                metadata.uses)
             if spatial_score <= max_spatial then
                 self.scoring:addCandidate(results, final_seen, entry,
                     spatial_score, ranked_score,

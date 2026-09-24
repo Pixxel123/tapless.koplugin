@@ -7,6 +7,14 @@ local Scoring = {
     RARE_SHORT_FREQ = 3000,
     RARE_SHORT_COST = 3.29,
     REPEAT_BONUS = 3354,
+    -- Words the user has kept: the bonus per doubling of their uses, its
+    -- cap, and the frequency it may lift a word to. Common words already
+    -- sit above the ceiling, so only rarer words gain on their neighbours.
+    -- A word kept KNOWN_USES times is no longer a rare fragment.
+    USAGE_UNIT = 500,
+    USAGE_CAP = 2000,
+    USAGE_CEILING = 6000,
+    KNOWN_USES = 2,
     -- Cost of a word whose first letter is not the key the swipe started
     -- on, when the trace crosses that letter later.
     FIRST_LETTER_COST = 6,
@@ -540,8 +548,21 @@ function Scoring:shortWordEndpointScore(trace, candidate)
         math.floor(#trace / 2) + missing * 3 + trailing * 2 - 2)
 end
 
+-- What a word's uses take off its ranked score, in the same units as freq.
+-- One use, perhaps an uncorrected mistake, earns nothing; a pick counts for
+-- two. The bonus stops where it would lift freq past USAGE_CEILING.
+function Scoring:usageBonus(freq, uses)
+    if not uses or uses < 2 then
+        return 0
+    end
+    local bonus = math.min(self.USAGE_CAP,
+        self.USAGE_UNIT * math.log(uses) / math.log(2))
+    return math.floor(0.5 + math.max(0,
+        math.min(bonus, self.USAGE_CEILING - (freq or 0))))
+end
+
 function Scoring:finishEntryScore(signature, entry, score, matched_positions,
-        trace_info, context_bonus)
+        trace_info, context_bonus, uses)
     local candidate = entry.gesture_signature or entry.signature
     local endpoint_score = self:shortWordEndpointScore(signature, candidate)
     if endpoint_score and (#candidate <= 3 or (entry.freq or 0) >= 6500) then
@@ -571,20 +592,22 @@ function Scoring:finishEntryScore(signature, entry, score, matched_positions,
     -- The word's own length: the gesture signature collapses doubled
     -- letters, which would make "moor" look like a three-letter word.
     if #(entry.signature or candidate) <= self.RARE_SHORT_LENGTH
-            and (entry.freq or 0) < self.RARE_SHORT_FREQ then
+            and (entry.freq or 0) < self.RARE_SHORT_FREQ
+            and (uses or 0) < self.KNOWN_USES then
         rarity = self.RARE_SHORT_COST * self.SCORE_UNIT
     end
     return score,
         score * self.SCORE_UNIT - (entry.freq or 0) + rarity
             - (context_bonus or 0)
             - math.floor(repeat_bonus * self.REPEAT_BONUS)
+            - self:usageBonus(entry.freq, uses)
 end
 
 -- The third result is true when the word needed letters from keys next to
 -- the ones the path crossed.
 function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
         trace_info, key_centers, allow_endpoint_mismatch, context_bonus,
-        allow_start_mismatch, near)
+        allow_start_mismatch, near, uses)
     local candidate = entry.gesture_signature or entry.signature
     local function match(near_limit)
         return self:matchScore(
@@ -611,13 +634,13 @@ function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
         end
     end
     local spatial_score, ranked_score = self:finishEntryScore(signature,
-        entry, score, matched_positions, trace_info, context_bonus)
+        entry, score, matched_positions, trace_info, context_bonus, uses)
     return spatial_score, ranked_score, used_near
 end
 
 function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         key_centers, allow_endpoint_mismatch, context_bonus,
-        allow_start_mismatch, near)
+        allow_start_mismatch, near, uses)
     local candidate = entry.gesture_signature or entry.signature
     local score, _, matched_positions = self:dynamicMatchScore(
         candidate,
@@ -630,7 +653,7 @@ function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         allow_start_mismatch,
         near)
     return self:finishEntryScore(signature, entry, score, matched_positions,
-        trace_info, context_bonus)
+        trace_info, context_bonus, uses)
 end
 
 function Scoring:addCandidate(results, seen, entry, spatial_score,

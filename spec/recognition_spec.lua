@@ -70,10 +70,16 @@ end
 -- signature: letters the finger crossed. start: where the finger landed.
 -- intents: how deliberately each letter was crossed (turns score high).
 -- turns: how far the path turned on each letter's key, in radians.
-local function recognize(words, signature, start, intents, turns, blocked)
+-- word_uses(word) says how often the user has kept a word; tune(scoring)
+-- may pin the constants the test depends on.
+local function recognize(words, signature, start, intents, turns, blocked,
+        word_uses, tune)
     local layout = newLayout()
     local geometry = T.load("keyboard_geometry"):new(T.normalization)
     local scoring = T.load("scoring"):new(T.normalization)
+    if tune then
+        tune(scoring)
+    end
     local engine = T.load("recognition_engine"):new(newStore(words), scoring,
         T.load("geometry_reranker"):new(), nil, blocked)
     local points, observations = { start }, {}
@@ -104,6 +110,7 @@ local function recognize(words, signature, start, intents, turns, blocked)
             return geometry:endpointLetters(layout, trace_info.endpoint_pos,
                 last)
         end,
+        word_uses = word_uses,
     }
 end
 
@@ -199,6 +206,85 @@ it("ranks rare short words below words that fit as well", function()
         - (200 + scoring.RARE_SHORT_COST * scoring.SCORE_UNIT)) < 1e-6,
         "rare short cost applied exactly")
     T.eq(ranked(long, below) - ranked(long, above), 200)
+end)
+
+-- Constants the usage specs depend on, pinned on the instance so retuning
+-- the defaults leaves them alone.
+local function pinUsage(scoring)
+    scoring.USAGE_UNIT = 500
+    scoring.USAGE_CAP = 1500
+    scoring.USAGE_CEILING = 6000
+    scoring.KNOWN_USES = 2
+    return scoring
+end
+
+it("gives a word nothing for one keep and a bonus per doubling after",
+        function()
+    local scoring = pinUsage(T.load("scoring"):new(T.normalization))
+    T.eq(scoring:usageBonus(4000, nil), 0)
+    T.eq(scoring:usageBonus(4000, 0), 0)
+    T.eq(scoring:usageBonus(4000, 1), 0, "one keep may be a mistake")
+    T.eq(scoring:usageBonus(4000, 2), 500)
+    T.eq(scoring:usageBonus(4000, 4), 1000)
+    T.eq(scoring:usageBonus(1000, 8), 1500, "capped")
+    T.eq(scoring:usageBonus(1000, 255), 1500, "capped")
+end)
+
+it("never lifts a word past the frequency ceiling", function()
+    local scoring = pinUsage(T.load("scoring"):new(T.normalization))
+    T.eq(scoring:usageBonus(5800, 8), 200, "only the gap to the ceiling")
+    T.eq(scoring:usageBonus(6000, 8), 0)
+    T.eq(scoring:usageBonus(7500, 255), 0, "common words gain nothing")
+    T.eq(scoring:usageBonus(nil, 2), 500, "a word with no frequency")
+end)
+
+it("takes the usage bonus off a word's ranked score", function()
+    local scoring = pinUsage(T.load("scoring"):new(T.normalization))
+    local function ranked(uses)
+        local _, score = scoring:finishEntryScore("bvcqx",
+            { gesture_signature = "bvcqx", freq = 4000 }, 2, {}, nil, 0, uses)
+        return score
+    end
+    T.eq(ranked(0) - ranked(1), 0)
+    T.eq(ranked(0) - ranked(2), 500)
+    T.eq(ranked(0) - ranked(4), 1000)
+    T.eq(ranked(nil), ranked(0), "no count is no uses")
+end)
+
+it("stops charging a word kept twice as a rare short fragment", function()
+    local scoring = pinUsage(T.load("scoring"):new(T.normalization))
+    local short = ("bcqxzv"):sub(1, scoring.RARE_SHORT_LENGTH)
+    local freq = scoring.RARE_SHORT_FREQ - 100
+    local function ranked(uses)
+        local _, score = scoring:finishEntryScore(short,
+            { gesture_signature = short, freq = freq }, 2, {}, nil, 0, uses)
+        return score
+    end
+    local cost = scoring.RARE_SHORT_COST * scoring.SCORE_UNIT
+    T.truthy(math.abs(ranked(0) - ranked(1)) < 1e-6,
+        "one keep still pays the cost")
+    T.truthy(math.abs((ranked(0) - ranked(2))
+        - (cost + scoring:usageBonus(freq, 2))) < 1e-6,
+        "two keeps drop the cost and earn the bonus")
+end)
+
+it("puts a word the user keeps ahead of a slightly better fit", function()
+    local candidates = { { "wyne", 5000 }, { "wine", 5000 } }
+    local args = { NEAR_TRACE, { x = 150, y = 50 }, NEAR_INTENTS, NEAR_TURNS }
+    local function order(word_uses)
+        return words(recognize(candidates, args[1], args[2], args[3],
+            args[4], nil, word_uses, function(scoring)
+                pinUsage(scoring)
+                -- Enough to outweigh what tells the two spellings apart.
+                scoring.USAGE_UNIT = 100000
+                scoring.USAGE_CAP = 100000
+                scoring.USAGE_CEILING = 100000
+            end))
+    end
+    T.eq(order(nil), "wyne,wine")
+    T.eq(order(function() return 0 end), "wyne,wine")
+    T.eq(order(function(word) return word == "wine" and 2 or 0 end),
+        "wine,wyne")
 end)
 
 it("counts doubled letters when deciding a word is short", function()
