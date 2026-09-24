@@ -3,7 +3,7 @@
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
 --     [--context] [--context-settings FILE] [--misses] [--losses]
---     SESSION.jsonl...
+--     [--keep-suspect] SESSION.jsonl...
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 
@@ -493,9 +493,48 @@ end
 
 Replay.hit = hit
 
-local function readSessions(paths, json)
-    local attempts = {}
-    for _, path in ipairs(paths) do
+-- Why a recorded attempt should be left out, or nil. Never looks at how
+-- the swipe was recognised, which would leave out real misses:
+-- keys all at one point were read while the keyboard was being rebuilt;
+-- a sentence swipe whose target the text box already ends with was for
+-- a later word; so may be a swipe made while a wrong word was left in.
+function Replay.auditAttempt(attempt)
+    local keys = {}
+    for _, key in ipairs(attempt.keys or {}) do
+        if not key.candidate then
+            keys[#keys + 1] = key
+        end
+    end
+    if #keys > 1 then
+        local same = true
+        for index = 2, #keys do
+            if keys[index].x ~= keys[1].x or keys[index].y ~= keys[1].y then
+                same = false
+                break
+            end
+        end
+        if same then
+            return "keys not laid out"
+        end
+    end
+    if attempt.after_uncorrected then
+        return "after an uncorrected word"
+    end
+    local target = (attempt.target or ""):lower()
+    local previous = (attempt.previous_word or ""):lower()
+    if attempt.mode == "sentences" and #target > 0
+            and previous:sub(-#target) == target then
+        return "target already typed"
+    end
+end
+
+-- Attempts in file order, each with its session's mode and the index of
+-- its file, and a count of attempts left out by reason.
+-- options.keep_suspect keeps them all.
+function Replay.readSessions(paths, json, options)
+    local keep = options and options.keep_suspect
+    local attempts, left_out = {}, {}
+    for session, path in ipairs(paths) do
         local mode = "words"
         for line in io.lines(path) do
             local record = json.decode(line)
@@ -503,11 +542,32 @@ local function readSessions(paths, json)
                 mode = record.mode or mode
             elseif record and record.type == "attempt" and record.target then
                 record.mode = mode
-                attempts[#attempts + 1] = record
+                record.session = session
+                local reason = not keep and Replay.auditAttempt(record)
+                if reason then
+                    left_out[reason] = (left_out[reason] or 0) + 1
+                else
+                    attempts[#attempts + 1] = record
+                end
             end
         end
     end
-    return attempts
+    return attempts, left_out
+end
+
+-- "Left out 7 suspect attempts: keys not laid out (1), ...", or nil.
+function Replay.describeLeftOut(left_out)
+    local reasons, total = {}, 0
+    for reason, count in pairs(left_out) do
+        reasons[#reasons + 1] = string.format("%s (%d)", reason, count)
+        total = total + count
+    end
+    if total == 0 then
+        return nil
+    end
+    table.sort(reasons)
+    return string.format("Left out %d suspect attempts: %s", total,
+        table.concat(reasons, ", "))
 end
 
 local function percent(part, whole)
@@ -532,6 +592,7 @@ local function main(args)
     local plugin_dir = tools_dir .. "/../tapless.koplugin"
     local compare_dir, show_misses, show_losses, paths = nil, false, false,
         {}
+    local keep_suspect = false
     local personal_dir
     local use_context, context_settings = false, nil
     local index = 1
@@ -555,6 +616,8 @@ local function main(args)
             show_misses = true
         elseif value == "--losses" then
             show_losses = true
+        elseif value == "--keep-suspect" then
+            keep_suspect = true
         else
             paths[#paths + 1] = value
         end
@@ -564,7 +627,7 @@ local function main(args)
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
             .. "[--compare DIR] [--personal DIR] [--context] "
             .. "[--context-settings FILE] [--misses] [--losses] "
-            .. "SESSION.jsonl...\n")
+            .. "[--keep-suspect] SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -575,7 +638,12 @@ local function main(args)
         os.exit(2)
     end
 
-    local attempts = readSessions(paths, json)
+    local attempts, left_out = Replay.readSessions(paths, json,
+        { keep_suspect = keep_suspect })
+    local left_out_line = Replay.describeLeftOut(left_out)
+    if left_out_line then
+        print(left_out_line)
+    end
     local context_counts = context_settings
         and dofile(context_settings)[CONTEXT_SETTING_KEY]
     local options = { personal_dir = personal_dir, context = use_context,

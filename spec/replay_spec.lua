@@ -157,3 +157,46 @@ it("names the stage where the intended word was lost", function()
     T.eq(rawget(plugin.engine.scoring, "scoreEntry"), nil)
     T.eq(Replay.run(plugin, attemptFor("water")).words[1], "water")
 end)
+
+it("names why a recorded attempt should be left out", function()
+    local good = { mode = "sentences", target = "like",
+        previous_word = "you",
+        keys = { { x = 0, y = 0 }, { x = 10, y = 0 } } }
+    T.eq(Replay.auditAttempt(good), nil)
+    T.eq(Replay.auditAttempt({ mode = "words", target = "like",
+        previous_word = "ulike", keys = {} }), nil)
+    T.eq(Replay.auditAttempt({ mode = "sentences", target = "like",
+        previous_word = "uLike", keys = {} }), "target already typed")
+    T.eq(Replay.auditAttempt({ mode = "sentences", target = "to",
+        after_uncorrected = 3, keys = {} }), "after an uncorrected word")
+    T.eq(Replay.auditAttempt({ mode = "words", target = "please",
+        keys = { { x = 0, y = 0 }, { x = 0, y = 0 },
+            { x = 5, y = 5, candidate = true } } }), "keys not laid out")
+end)
+
+it("reads sessions and leaves out suspect attempts", function()
+    local path = os.tmpname()
+    local file = assert(io.open(path, "w"))
+    file:write("start\ngood\nahead\nempty\n")
+    file:close()
+    local records = {
+        start = { type = "start", mode = "sentences" },
+        good = { type = "attempt", target = "you", previous_word = "would",
+            keys = {} },
+        ahead = { type = "attempt", target = "like", previous_word = "like",
+            keys = {} },
+        empty = { type = "attempt", target = "to", previous_word = "like",
+            keys = { { x = 0, y = 0 }, { x = 0, y = 0 } } },
+    }
+    local json = { decode = function(line) return records[line] end }
+    local attempts, left_out = Replay.readSessions({ path }, json)
+    T.eq(#attempts, 1)
+    T.eq(attempts[1].target, "you")
+    T.eq(attempts[1].mode, "sentences")
+    T.eq(attempts[1].session, 1)
+    T.eq(left_out["target already typed"], 1)
+    T.eq(left_out["keys not laid out"], 1)
+    local all = Replay.readSessions({ path }, json, { keep_suspect = true })
+    T.eq(#all, 3)
+    os.remove(path)
+end)

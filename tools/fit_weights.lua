@@ -406,21 +406,27 @@ local function main(args)
         plugin.engine.geometry_reranker)
 
     local sessions, all, skipped, total = {}, {}, 0, 0
+    local left_out = {}
     for session_index, path in ipairs(paths) do
         sessions[session_index] = {}
-        for line in io.lines(path) do
-            local record = json.decode(line)
-            if record and record.type == "attempt" and record.target then
-                total = total + 1
-                local swipe = FitWeights.candidateFeatures(plugin, record)
-                if swipe then
-                    table.insert(sessions[session_index], swipe)
-                    table.insert(all, swipe)
-                else
-                    skipped = skipped + 1
-                end
+        local attempts, file_left_out = Replay.readSessions({ path }, json)
+        for reason, count in pairs(file_left_out) do
+            left_out[reason] = (left_out[reason] or 0) + count
+        end
+        for _, record in ipairs(attempts) do
+            total = total + 1
+            local swipe = FitWeights.candidateFeatures(plugin, record)
+            if swipe then
+                table.insert(sessions[session_index], swipe)
+                table.insert(all, swipe)
+            else
+                skipped = skipped + 1
             end
         end
+    end
+    local left_out_line = Replay.describeLeftOut(left_out)
+    if left_out_line then
+        print(left_out_line)
     end
     print(string.format("%d swipes, %d usable (%d without the intended "
         .. "word among the candidates)", total, #all, skipped))
