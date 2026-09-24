@@ -16,7 +16,8 @@ package.path = tools_dir .. "/?.lua;" .. package.path
 local Replay = dofile(tools_dir .. "/replay.lua")
 
 local FitWeights = {
-    FEATURES = { "spatial", "frequency", "rarity", "repeat", "geometry" },
+    FEATURES = { "spatial", "frequency", "rarity", "repeat", "geometry",
+        "borrowed" },
     -- Ridge penalty: keeps weights finite when a feature separates the
     -- few swipes it appears in.
     RIDGE = 0.01,
@@ -25,6 +26,8 @@ local FitWeights = {
 
 -- The current constants in the same units: ranked_score / 1000 is
 --   3 * spatial - freq / 1000 + 12 * rare - 4.5 * repeat + 1.8 * geometry
+-- A borrowed letter is not its own feature today: it just adds
+-- NEAR_KEY_COST to the spatial score, so its starting weight is 0.
 function FitWeights.currentWeights(scoring, reranker)
     return {
         scoring.SCORE_UNIT / 1000,
@@ -32,7 +35,23 @@ function FitWeights.currentWeights(scoring, reranker)
         scoring.RARE_SHORT_COST * scoring.SCORE_UNIT / 1000,
         scoring.REPEAT_BONUS / 1000,
         reranker.RANK_WEIGHT / 1000,
+        0,
     }
+end
+
+-- How many of a candidate's interior letters (not the first or last,
+-- which are start/endpoint mismatches rather than borrowings) differ
+-- from the trace letter they were matched to.
+function FitWeights.borrowedLetters(candidate, trace_chars,
+        matched_positions)
+    local count = 0
+    for p = 2, #candidate - 1 do
+        local matched = matched_positions[p]
+        if matched and candidate:sub(p, p) ~= trace_chars[matched] then
+            count = count + 1
+        end
+    end
+    return count
 end
 
 -- Replays one attempt and returns its candidates' features, with the
@@ -92,16 +111,28 @@ function FitWeights.candidateFeatures(plugin, attempt)
             local repeat_credit = (spatial * scoring.SCORE_UNIT - freq
                 + rare * scoring.RARE_SHORT_COST * scoring.SCORE_UNIT
                 - ranked) / scoring.REPEAT_BONUS
-            local geometry = plugin.engine.geometry_reranker:score(trace_info.points,
-                entry.gesture_signature or entry.signature, key_centers)
+            local candidate_signature = entry.gesture_signature
+                or entry.signature
+            local geometry = plugin.engine.geometry_reranker:score(
+                trace_info.points, candidate_signature, key_centers)
             if geometry then
                 geometry_total = geometry_total + geometry
                 geometry_count = geometry_count + 1
             end
+            -- The third return is matched_positions, used only here to
+            -- count letters borrowed from a neighbouring key.
+            local _, _, matched_positions = scoring:dynamicMatchScore(
+                candidate_signature, trace_chars,
+                metadata.allow_endpoint_mismatch, trace_info.letter_points,
+                trace_info.endpoint_pos, key_centers,
+                trace_info.observations, metadata.allow_start_mismatch,
+                metadata.allow_near and near or nil)
+            local borrowed = FitWeights.borrowedLetters(candidate_signature,
+                trace_chars, matched_positions)
             rows[#rows + 1] = {
                 word = entry.word,
                 features = { spatial, -freq / 1000, rare, -repeat_credit,
-                    geometry or false },
+                    geometry or false, borrowed },
             }
             if entry.word:lower() == target then
                 target_index = #rows
@@ -198,6 +229,43 @@ local function solve(matrix, vector)
     return x
 end
 
+-- Gradient and Hessian of the penalized negative log-likelihood, at
+-- weights. Shared by fit (which walks downhill with it) and
+-- standardErrors (which only needs the Hessian at the fitted point).
+local function gradientAndHessian(swipes, weights, ridge)
+    local n = #weights
+    local gradient, hessian = {}, {}
+    for i = 1, n do
+        gradient[i] = 2 * ridge * weights[i]
+        hessian[i] = {}
+        for j = 1, n do
+            hessian[i][j] = i == j and 2 * ridge or 0
+        end
+    end
+    for _, swipe in ipairs(swipes) do
+        local p = shares(scores(swipe, weights))
+        local mean = {}
+        for k = 1, n do
+            mean[k] = 0
+            for c, row in ipairs(swipe.rows) do
+                mean[k] = mean[k] + p[c] * row.features[k]
+            end
+            gradient[k] = gradient[k]
+                + swipe.rows[swipe.target].features[k] - mean[k]
+        end
+        for c, row in ipairs(swipe.rows) do
+            for i = 1, n do
+                local di = row.features[i] - mean[i]
+                for j = 1, n do
+                    hessian[i][j] = hessian[i][j]
+                        + p[c] * di * (row.features[j] - mean[j])
+                end
+            end
+        end
+    end
+    return gradient, hessian
+end
+
 -- Newton's method on the (convex) penalized negative log-likelihood.
 function FitWeights.fit(swipes, start, ridge, iterations)
     ridge = ridge or FitWeights.RIDGE
@@ -205,35 +273,7 @@ function FitWeights.fit(swipes, start, ridge, iterations)
     local weights = { unpack(start) }
     local current = FitWeights.loss(swipes, weights, ridge)
     for _ = 1, iterations or FitWeights.ITERATIONS do
-        local gradient, hessian = {}, {}
-        for i = 1, n do
-            gradient[i] = 2 * ridge * weights[i]
-            hessian[i] = {}
-            for j = 1, n do
-                hessian[i][j] = i == j and 2 * ridge or 0
-            end
-        end
-        for _, swipe in ipairs(swipes) do
-            local p = shares(scores(swipe, weights))
-            local mean = {}
-            for k = 1, n do
-                mean[k] = 0
-                for c, row in ipairs(swipe.rows) do
-                    mean[k] = mean[k] + p[c] * row.features[k]
-                end
-                gradient[k] = gradient[k]
-                    + swipe.rows[swipe.target].features[k] - mean[k]
-            end
-            for c, row in ipairs(swipe.rows) do
-                for i = 1, n do
-                    local di = row.features[i] - mean[i]
-                    for j = 1, n do
-                        hessian[i][j] = hessian[i][j]
-                            + p[c] * di * (row.features[j] - mean[j])
-                    end
-                end
-            end
-        end
+        local gradient, hessian = gradientAndHessian(swipes, weights, ridge)
         local step = solve(hessian, gradient)
         local scale, improved = 1, false
         for _ = 1, 20 do
@@ -253,6 +293,25 @@ function FitWeights.fit(swipes, start, ridge, iterations)
         end
     end
     return weights
+end
+
+-- Standard errors of fitted weights: the square roots of the diagonal
+-- of the penalized Hessian's inverse, found one column at a time with
+-- the same solver fit uses.
+function FitWeights.standardErrors(swipes, weights, ridge)
+    ridge = ridge or FitWeights.RIDGE
+    local n = #weights
+    local _, hessian = gradientAndHessian(swipes, weights, ridge)
+    local errors = {}
+    for k = 1, n do
+        local unit = {}
+        for i = 1, n do
+            unit[i] = i == k and 1 or 0
+        end
+        local column = solve(hessian, unit)
+        errors[k] = math.sqrt(column[k])
+    end
+    return errors
 end
 
 -- How many swipes put the intended word first. Ties go to the earlier
@@ -283,7 +342,22 @@ function FitWeights.constants(weights)
         RARE_SHORT_COST = weights[3] * per_freq / score_unit,
         REPEAT_BONUS = weights[4] * per_freq,
         RANK_WEIGHT = weights[5] * per_freq,
+        NEAR_RANK_COST = weights[6] and weights[6] * per_freq or 0,
     }
+end
+
+-- Copies swipes with feature 6 dropped, to fit and score without it.
+local function withoutLast(swipes)
+    local out = {}
+    for index, swipe in ipairs(swipes) do
+        local rows = {}
+        for row_index, row in ipairs(swipe.rows) do
+            rows[row_index] = { word = row.word,
+                features = { unpack(row.features, 1, 5) } }
+        end
+        out[index] = { rows = rows, target = swipe.target, word = swipe.word }
+    end
+    return out
 end
 
 local function main(args)
@@ -330,8 +404,9 @@ local function main(args)
     print(string.format("%d swipes, %d usable (%d without the intended "
         .. "word among the candidates)", total, #all, skipped))
 
-    print("\nHeld-out session     n  current  fitted")
-    local held_current, held_fitted, held_n = 0, 0, 0
+    local short_start = { unpack(start, 1, 5) }
+    print("\nHeld-out session     n  current  -borrow  fitted")
+    local held_current, held_no_borrow, held_fitted, held_n = 0, 0, 0, 0
     for held, test in ipairs(sessions) do
         local train = {}
         for other, swipes in ipairs(sessions) do
@@ -342,31 +417,70 @@ local function main(args)
             end
         end
         local weights = FitWeights.fit(train, start)
+        local no_borrow_weights = FitWeights.fit(withoutLast(train),
+            short_start)
         local current = FitWeights.topOne(test, start)
+        local no_borrow = FitWeights.topOne(withoutLast(test),
+            no_borrow_weights)
         local fitted = FitWeights.topOne(test, weights)
         held_current = held_current + current
+        held_no_borrow = held_no_borrow + no_borrow
         held_fitted = held_fitted + fitted
         held_n = held_n + #test
-        print(string.format("  %-16s %4d  %7d  %6d",
-            paths[held]:match("[^/]*$"):sub(1, 16), #test, current, fitted))
+        print(string.format("  %-16s %4d  %7d  %7d  %6d",
+            paths[held]:match("[^/]*$"):sub(1, 16), #test, current,
+            no_borrow, fitted))
     end
-    print(string.format("  %-16s %4d  %7d  %6d", "all held out", held_n,
-        held_current, held_fitted))
+    print(string.format("  %-16s %4d  %7d  %7d  %6d", "all held out",
+        held_n, held_current, held_no_borrow, held_fitted))
 
     local weights = FitWeights.fit(all, start)
-    print("\nWeights fitted on every session (frequency held at 1):")
+    local se = FitWeights.standardErrors(all, weights)
+    print("\nWeights fitted on every session (frequency held at 1;"
+        .. " ± is 1.96 SE, ignoring the frequency weight's own"
+        .. " uncertainty):")
     local constants = FitWeights.constants(weights)
-    print(string.format("  SCORE_UNIT       %8.0f  (now %d)",
-        constants.SCORE_UNIT, plugin.engine.scoring.SCORE_UNIT))
-    print(string.format("  RARE_SHORT_COST  %8.2f  (now %d)",
-        constants.RARE_SHORT_COST, plugin.engine.scoring.RARE_SHORT_COST))
-    print(string.format("  REPEAT_BONUS     %8.0f  (now %d)",
-        constants.REPEAT_BONUS, plugin.engine.scoring.REPEAT_BONUS))
-    print(string.format("  RANK_WEIGHT      %8.0f  (now %d)",
-        constants.RANK_WEIGHT, plugin.engine.geometry_reranker.RANK_WEIGHT))
+    -- Each constant's SE is its weight's SE run through the same scale
+    -- factor as the constant itself; the frequency weight's own SE is
+    -- not propagated.
+    local per_freq = 1000 / weights[2]
+    local score_unit = weights[1] * per_freq
+    local se_constants = {
+        SCORE_UNIT = se[1] * per_freq,
+        RARE_SHORT_COST = se[3] * per_freq / score_unit,
+        REPEAT_BONUS = se[4] * per_freq,
+        RANK_WEIGHT = se[5] * per_freq,
+        NEAR_RANK_COST = se[6] and se[6] * per_freq or 0,
+    }
+    print(string.format("  SCORE_UNIT       %8.0f ± %-6.0f (now %d)",
+        constants.SCORE_UNIT, 1.96 * se_constants.SCORE_UNIT,
+        plugin.engine.scoring.SCORE_UNIT))
+    print(string.format("  RARE_SHORT_COST  %8.2f ± %-6.2f (now %d)",
+        constants.RARE_SHORT_COST, 1.96 * se_constants.RARE_SHORT_COST,
+        plugin.engine.scoring.RARE_SHORT_COST))
+    print(string.format("  REPEAT_BONUS     %8.0f ± %-6.0f (now %d)",
+        constants.REPEAT_BONUS, 1.96 * se_constants.REPEAT_BONUS,
+        plugin.engine.scoring.REPEAT_BONUS))
+    print(string.format("  RANK_WEIGHT      %8.0f ± %-6.0f (now %d)",
+        constants.RANK_WEIGHT, 1.96 * se_constants.RANK_WEIGHT,
+        plugin.engine.geometry_reranker.RANK_WEIGHT))
+    print(string.format("  NEAR_RANK_COST   %8.0f ± %-6.0f (now %d)",
+        constants.NEAR_RANK_COST, 1.96 * se_constants.NEAR_RANK_COST, 0))
     print(string.format("  negative log-likelihood %.1f (current weights"
         .. " %.1f)", FitWeights.loss(all, weights, 0),
         FitWeights.loss(all, start, 0)))
+
+    local borrowed_swipes = 0
+    for _, swipe in ipairs(all) do
+        for _, row in ipairs(swipe.rows) do
+            if row.features[6] > 0 then
+                borrowed_swipes = borrowed_swipes + 1
+                break
+            end
+        end
+    end
+    print(string.format("\n%d usable swipes have a candidate that borrowed "
+        .. "a letter from a neighbouring key", borrowed_swipes))
 end
 
 if arg and arg[0] and arg[0]:match("fit_weights%.lua$") then

@@ -36,12 +36,50 @@ it("fits weights that rank the intended words first", function()
 end)
 
 it("reads fitted weights as the plugin's constants", function()
-    local constants = FitWeights.constants({ 0.3, 1, 0.81, 2.5, 5.3 })
+    local constants = FitWeights.constants({ 0.3, 1, 0.81, 2.5, 5.3, 0.4 })
     T.truthy(math.abs(constants.SCORE_UNIT - 300) < 1e-9, "SCORE_UNIT")
     T.truthy(math.abs(constants.RARE_SHORT_COST - 2.7) < 1e-9,
         "RARE_SHORT_COST")
     T.truthy(math.abs(constants.REPEAT_BONUS - 2500) < 1e-9, "REPEAT_BONUS")
     T.truthy(math.abs(constants.RANK_WEIGHT - 5300) < 1e-9, "RANK_WEIGHT")
+    T.truthy(math.abs(constants.NEAR_RANK_COST - 400) < 1e-9,
+        "NEAR_RANK_COST")
+end)
+
+it("counts letters borrowed from neighbouring keys", function()
+    T.eq(FitWeights.borrowedLetters("wine", { "w", "u", "n", "e" },
+        { 1, 2, 3, 4 }), 1)
+    T.eq(FitWeights.borrowedLetters("wyne", { "w", "y", "n", "e" },
+        { 1, 2, 3, 4 }), 0)
+    -- A different last letter is an endpoint mismatch, not a borrowing.
+    T.eq(FitWeights.borrowedLetters("wind", { "w", "i", "n", "e" },
+        { 1, 2, 3, 4 }), 0)
+end)
+
+it("gives smaller standard errors with more swipes", function()
+    -- Half the swipes intend each candidate, so the weights stay finite.
+    local function mixed(count)
+        local list = {}
+        for index = 1, count do
+            list[index] = {
+                target = index % 2 + 1,
+                rows = {
+                    { features = { 1, -2 } },
+                    { features = { 0, -1.5 } },
+                },
+            }
+        end
+        return list
+    end
+    local few, many = mixed(10), mixed(40)
+    local few_se = FitWeights.standardErrors(few,
+        FitWeights.fit(few, { 1, 1 }))
+    local many_se = FitWeights.standardErrors(many,
+        FitWeights.fit(many, { 1, 1 }))
+    for k = 1, 2 do
+        T.truthy(few_se[k] > 0 and few_se[k] < math.huge, "finite " .. k)
+        T.truthy(many_se[k] < few_se[k], "shrinks " .. k)
+    end
 end)
 
 it("describes a swipe's candidates by the features the ranking uses",
