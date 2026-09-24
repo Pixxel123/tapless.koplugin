@@ -316,6 +316,11 @@ local function percent(part, whole)
         or "    -"
 end
 
+local function reciprocal(sum, count)
+    return count > 0 and string.format("%6.3f", sum / count)
+        or "     -"
+end
+
 local function lengthGroup(row)
     local length = #row.target
     if length <= 3 then return "length 2-3" end
@@ -415,9 +420,9 @@ local function main(args)
     print(string.format("%-24s %6s  %7s %7s %6s  %7s %7s", "", "n",
         "replay", "top 4", "MRR", "device", "top 4"))
     local function line(name, counts, device_counts)
-        print(string.format("%-24s %6d  %7s %7s %6.3f  %7s %7s", name,
+        print(string.format("%-24s %6d  %7s %7s %s  %7s %7s", name,
             counts.n, percent(counts.top1, counts.n),
-            percent(counts.top4, counts.n), counts.rr / counts.n,
+            percent(counts.top4, counts.n), reciprocal(counts.rr, counts.n),
             percent(device_counts.top1, device_counts.n),
             percent(device_counts.top4, device_counts.n)))
     end
