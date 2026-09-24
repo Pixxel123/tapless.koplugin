@@ -2,7 +2,7 @@
 -- directory's recognition code and reports accuracy.
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--misses]
---     SESSION.jsonl...
+--     [--losses] SESSION.jsonl...
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 
@@ -229,6 +229,103 @@ function Replay.run(plugin, attempt)
     return { letters = signature, words = words }
 end
 
+-- The stages a swipe's intended word passes on its way to first place,
+-- in order. lossStage names the first one it failed.
+Replay.LOSS_STAGES = {
+    "not scanned",       -- no bucket searched held it, or no word at all
+    "too far",           -- first, quick pass: too few letters crossed
+    "cut from shortlist",
+    "too far aligned",   -- full alignment: too few letters crossed
+    "cut from results",
+    "outranked",         -- among the results, but not first
+    "first",
+}
+
+-- Replays attempt and reports where its intended word was lost, by
+-- watching the scoring calls the engine makes.
+function Replay.lossStage(plugin, attempt)
+    local engine = plugin.engine
+    local scoring = engine.scoring
+    local reranker = engine.geometry_reranker
+    local target = (attempt.target or ""):lower()
+    local first_pass, aligned, max_spatial
+    local shortlist, results
+    local function isTarget(entry)
+        return entry.word:lower() == target
+    end
+    scoring.scoreEntry = function(self, signature, entry, ...)
+        local spatial, ranked, near = getmetatable(self).scoreEntry(
+            self, signature, entry, ...)
+        if isTarget(entry) then
+            first_pass = math.min(first_pass or math.huge, spatial)
+            max_spatial = math.max(6, #signature)
+        end
+        return spatial, ranked, near
+    end
+    scoring.scoreEntryDynamic = function(self, signature, entry, ...)
+        local spatial, ranked = getmetatable(self).scoreEntryDynamic(
+            self, signature, entry, ...)
+        if isTarget(entry) then
+            aligned = math.min(aligned or math.huge, spatial)
+        end
+        return spatial, ranked
+    end
+    -- The first pass adds candidates with metadata; the final one without.
+    scoring.addCandidate = function(self, list, seen, entry, spatial,
+            ranked, limit, metadata)
+        if metadata then
+            shortlist = list
+        end
+        return getmetatable(self).addCandidate(self, list, seen, entry,
+            spatial, ranked, limit, metadata)
+    end
+    -- The reranker trims the results in place, so note them first.
+    if reranker then
+        reranker.rerank = function(self, candidates, ...)
+            results = {}
+            for index, candidate in ipairs(candidates) do
+                results[index] = candidate
+            end
+            return getmetatable(self).rerank(self, candidates, ...)
+        end
+    end
+    local ok, result = pcall(Replay.run, plugin, attempt)
+    scoring.scoreEntry = nil
+    scoring.scoreEntryDynamic = nil
+    scoring.addCandidate = nil
+    if reranker then
+        reranker.rerank = nil
+    end
+    if not ok then
+        error(result, 0)
+    end
+
+    local function holds(list)
+        for _, candidate in ipairs(list or {}) do
+            if candidate.word:lower() == target then
+                return true
+            end
+        end
+        return false
+    end
+    if result.short then
+        return "not scanned"
+    elseif (result.words[1] or ""):lower() == target then
+        return "first"
+    elseif not first_pass then
+        return "not scanned"
+    elseif first_pass > max_spatial then
+        return "too far"
+    elseif not holds(shortlist) then
+        return "cut from shortlist"
+    elseif (aligned or math.huge) > max_spatial then
+        return "too far aligned"
+    elseif not holds(results) then
+        return "cut from results"
+    end
+    return "outranked"
+end
+
 local function hit(row, limit)
     local target = (row.target or ""):lower()
     for index = 1, math.min(limit, #row.words) do
@@ -331,7 +428,8 @@ end
 
 local function main(args)
     local plugin_dir = tools_dir .. "/../tapless.koplugin"
-    local compare_dir, show_misses, paths = nil, false, {}
+    local compare_dir, show_misses, show_losses, paths = nil, false, false,
+        {}
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -343,6 +441,8 @@ local function main(args)
             compare_dir = args[index]
         elseif value == "--misses" then
             show_misses = true
+        elseif value == "--losses" then
+            show_losses = true
         else
             paths[#paths + 1] = value
         end
@@ -350,7 +450,7 @@ local function main(args)
     end
     if #paths == 0 then
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
-            .. "[--compare DIR] [--misses] SESSION.jsonl...\n")
+            .. "[--compare DIR] [--misses] [--losses] SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -451,6 +551,29 @@ local function main(args)
         for _, pair in ipairs(changes.broke) do
             print("  broken " .. describe(pair[1]) .. "   (was "
                 .. table.concat(pair[2].words or {}, ", ") .. ")")
+        end
+    end
+    if show_losses then
+        local counts, groups = {}, {}
+        for _, attempt in ipairs(attempts) do
+            local stage = Replay.lossStage(plugin, attempt)
+            local group = lengthGroup(attempt)
+            counts[stage] = (counts[stage] or 0) + 1
+            groups[group] = groups[group] or {}
+            groups[group][stage] = (groups[group][stage] or 0) + 1
+        end
+        local names = { "length 2-3", "length 4-5", "length 6-7",
+            "length 8+" }
+        print("\nWhere intended words were lost:")
+        print(string.format("  %-20s %5s %11s %11s %11s %11s", "", "all",
+            unpack(names)))
+        for _, stage in ipairs(Replay.LOSS_STAGES) do
+            local cells = {}
+            for index, name in ipairs(names) do
+                cells[index] = (groups[name] or {})[stage] or 0
+            end
+            print(string.format("  %-20s %5d %11d %11d %11d %11d", stage,
+                counts[stage] or 0, unpack(cells)))
         end
     end
     if show_misses then

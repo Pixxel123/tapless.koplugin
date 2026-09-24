@@ -77,3 +77,14 @@ it("gives the chance a fixed/broken split is luck", function()
     local p = Replay.mcnemar(700, 650)
     T.truthy(p > 0.15 and p < 0.2, "700/650 gave " .. p)
 end)
+
+it("names the stage where the intended word was lost", function()
+    local attempt = attemptFor("water")
+    T.eq(Replay.lossStage(plugin, attempt), "first")
+    -- A swipe from w to r never searches words from h to o.
+    attempt.target = "hello"
+    T.eq(Replay.lossStage(plugin, attempt), "not scanned")
+    -- The engine is left as it was.
+    T.eq(rawget(plugin.engine.scoring, "scoreEntry"), nil)
+    T.eq(Replay.run(plugin, attemptFor("water")).words[1], "water")
+end)
