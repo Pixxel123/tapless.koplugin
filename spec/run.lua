@@ -13,6 +13,7 @@ local specs = {
     "recognition_spec",
     "recorder_spec",
     "replay_spec",
+    "fit_weights_spec",
     "trace_collector_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
