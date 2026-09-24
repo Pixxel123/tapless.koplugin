@@ -11,13 +11,22 @@ function KeyboardGeometry:new(normalization)
     }, self)
 end
 
+-- Whether pos lies in dimen, edges included, as KOReader's Geom:contains
+-- judges it. Trace points carry no size, and Geom:contains would fail on
+-- them, so a point without one counts as zero-sized.
+local function containsPoint(dimen, pos)
+    return dimen.x <= pos.x and dimen.y <= pos.y
+        and dimen.x + dimen.w >= pos.x + (pos.w or 0)
+        and dimen.y + dimen.h >= pos.y + (pos.h or 0)
+end
+
 function KeyboardGeometry:keyAt(layout, pos, profile)
     if not pos or not layout then
         return
     end
     for _, row in ipairs(layout) do
         for _, key in ipairs(row) do
-            if key.dimen and key.dimen:contains(pos) then
+            if key.dimen and containsPoint(key.dimen, pos) then
                 if key.is_swype_candidate then
                     return
                 end

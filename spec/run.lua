@@ -14,6 +14,7 @@ local specs = {
     "recorder_spec",
     "replay_spec",
     "trace_collector_spec",
+    "keyboard_geometry_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
     "blocked_words_spec",
