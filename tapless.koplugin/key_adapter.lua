@@ -26,6 +26,13 @@ function KeyAdapter:isTextKey(key)
             key.keyboard and key.keyboard.swype_mvp_normalization_profile) == 1
 end
 
+-- A swipe on a key that is no letter still starts a word when it began on a
+-- number key, a little high: the keyboard counts that as the letter below.
+function KeyAdapter:startsWordSwipe(keyboard, ges)
+    local start = ges and (ges.start_pos or ges.pos)
+    return start ~= nil and keyboard:_swypeStartKeyAt(start) ~= nil
+end
+
 -- Space keys in every KOReader layout, including the full-width space used
 -- by the Japanese kana layers.
 function KeyAdapter:isSpaceKey(key)
@@ -243,6 +250,9 @@ function KeyAdapter:wrappers()
                     if adapter:isTextKey(key) then
                         keyboard:onSwypeWordSwipe(arg, ges, key)
                         return true
+                    elseif adapter:startsWordSwipe(keyboard, ges)
+                            and keyboard:onSwypeWordSwipe(arg, ges, key) then
+                        return true
                     elseif keyboard.swype_mvp_trace then
                         keyboard:_swypeReset()
                     end
@@ -257,6 +267,9 @@ function KeyAdapter:wrappers()
                 if keyboard and keyboard:isSwypeMvpEnabled() then
                     if adapter:isTextKey(key) then
                         keyboard:onSwypeWordMultiswipe(arg, ges, key)
+                        return true
+                    elseif adapter:startsWordSwipe(keyboard, ges)
+                            and keyboard:onSwypeWordMultiswipe(arg, ges, key) then
                         return true
                     elseif keyboard.swype_mvp_trace then
                         keyboard:_swypeReset()

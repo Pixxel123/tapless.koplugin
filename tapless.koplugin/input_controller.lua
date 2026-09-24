@@ -386,9 +386,19 @@ function InputController:finalizeSignature(keyboard, signature, trace_info)
         -- A finger that drifted while tapping only crosses one key. Type
         -- that key as a tap instead of dropping it, but only once the finger
         -- is lifted, not when a paused trace times out.
-        if trace_info and trace_info.released
-                and self:tapTraceKey(keyboard, trace_info) then
-            return true
+        if trace_info and trace_info.released then
+            -- A swipe that began on a number key counts as starting on the
+            -- letter below, yet may cross no other letter. That is a tap or
+            -- a flick on the number key itself, and KOReader knows what
+            -- it types, alternate characters included.
+            local first = trace_info.letter_points
+                and trace_info.letter_points[1]
+            if first and not keyboard:_swypeKeyAt(first) then
+                return false
+            end
+            if self:tapTraceKey(keyboard, trace_info) then
+                return true
+            end
         end
         keyboard.swype_mvp_session:recordShortSignature(signature)
         keyboard:_swypeRefreshCandidateRow()

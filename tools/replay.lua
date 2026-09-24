@@ -233,6 +233,12 @@ function Replay.run(plugin, attempt)
         _swypeKeyAt = function(_, pos)
             return plugin.geometry:keyAt(layout, pos, profile)
         end,
+        -- A plugin from before number-row starts has no startKeyAt.
+        _swypeStartKeyAt = function(_, pos)
+            local lookup = plugin.geometry.startKeyAt
+                or plugin.geometry.keyAt
+            return lookup(plugin.geometry, layout, pos, profile)
+        end,
         _swypeCommitPendingContext = noop,
         _swypeClearCandidateState = noop,
         _swypeClearTracePixels = noop,

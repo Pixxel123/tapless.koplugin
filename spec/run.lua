@@ -15,6 +15,7 @@ local specs = {
     "replay_spec",
     "fit_weights_spec",
     "trace_collector_spec",
+    "gesture_controller_spec",
     "keyboard_geometry_spec",
     "stray_touches_spec",
     "dictionary_controller_spec",
