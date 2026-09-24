@@ -3,8 +3,8 @@ local Scoring = {
     SCORE_UNIT = 949,
     -- Short words this rare are mostly abbreviations and fragments nobody
     -- swipes, but they can explain a long swipe by skipping most of it.
-    RARE_SHORT_LENGTH = 3,
-    RARE_SHORT_FREQ = 2600,
+    RARE_SHORT_LENGTH = 4,
+    RARE_SHORT_FREQ = 3000,
     RARE_SHORT_COST = 3.29,
     REPEAT_BONUS = 3354,
     -- Cost of a word whose first letter is not the key the swipe started

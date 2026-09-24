@@ -192,24 +192,30 @@ it("ranks rare short words below words that fit as well", function()
     end
     local below = scoring.RARE_SHORT_FREQ - 100
     local above = scoring.RARE_SHORT_FREQ + 100
-    -- A rare three-letter word pays extra; a rare longer word does not.
-    T.truthy(math.abs((ranked("bcq", below) - ranked("bcq", above))
+    local short = ("bcqxzv"):sub(1, scoring.RARE_SHORT_LENGTH)
+    local long = ("bvcqxzv"):sub(1, scoring.RARE_SHORT_LENGTH + 1)
+    -- A rare short word pays extra; a rare longer word does not.
+    T.truthy(math.abs((ranked(short, below) - ranked(short, above))
         - (200 + scoring.RARE_SHORT_COST * scoring.SCORE_UNIT)) < 1e-6,
         "rare short cost applied exactly")
-    T.eq(ranked("bvcq", below) - ranked("bvcq", above), 200)
+    T.eq(ranked(long, below) - ranked(long, above), 200)
 end)
 
 it("counts doubled letters when deciding a word is short", function()
     local scoring = T.load("scoring"):new(T.normalization)
+    -- A doubled first letter makes the word one letter longer than the
+    -- gesture signature, and so one longer than the short limit.
+    local gesture = ("mortv"):sub(1, scoring.RARE_SHORT_LENGTH)
+    local word = gesture:sub(1, 1) .. gesture
     local function ranked(freq)
-        local _, score = scoring:finishEntryScore("mor", {
-            signature = "moor", gesture_signature = "mor", freq = freq,
+        local _, score = scoring:finishEntryScore(gesture, {
+            signature = word, gesture_signature = gesture, freq = freq,
         }, 2, {}, nil, 0)
         return score
     end
     local below = scoring.RARE_SHORT_FREQ - 100
     local above = scoring.RARE_SHORT_FREQ + 100
-    T.eq(ranked(below) - ranked(above), 200, "moor is four letters")
+    T.eq(ranked(below) - ranked(above), 200, "a doubled letter still counts")
 end)
 
 it("limits letters from neighbouring keys in the final alignment too",
