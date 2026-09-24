@@ -190,11 +190,13 @@ it("ranks rare short words below words that fit as well", function()
             { gesture_signature = signature, freq = freq }, 2, {}, nil, 0)
         return score
     end
+    local below = scoring.RARE_SHORT_FREQ - 100
+    local above = scoring.RARE_SHORT_FREQ + 100
     -- A rare three-letter word pays extra; a rare longer word does not.
-    T.truthy(math.abs((ranked("bcq", 2500) - ranked("bcq", 2700))
+    T.truthy(math.abs((ranked("bcq", below) - ranked("bcq", above))
         - (200 + scoring.RARE_SHORT_COST * scoring.SCORE_UNIT)) < 1e-6,
         "rare short cost applied exactly")
-    T.eq(ranked("bvcq", 2500) - ranked("bvcq", 2700), 200)
+    T.eq(ranked("bvcq", below) - ranked("bvcq", above), 200)
 end)
 
 it("counts doubled letters when deciding a word is short", function()
@@ -205,7 +207,9 @@ it("counts doubled letters when deciding a word is short", function()
         }, 2, {}, nil, 0)
         return score
     end
-    T.eq(ranked(2500) - ranked(2700), 200, "moor is four letters")
+    local below = scoring.RARE_SHORT_FREQ - 100
+    local above = scoring.RARE_SHORT_FREQ + 100
+    T.eq(ranked(below) - ranked(above), 200, "moor is four letters")
 end)
 
 it("limits letters from neighbouring keys in the final alignment too",
