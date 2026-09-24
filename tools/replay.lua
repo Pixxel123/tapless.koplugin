@@ -560,8 +560,15 @@ local function main(args)
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
     local context_first, context_first_before = 0, 0
+    -- Collected here, in the same pass as Replay.learn, so a loss
+    -- stage never sees a pair learned from its own or a later attempt.
+    local loss_stages = show_losses and {} or nil
     for _, attempt in ipairs(attempts) do
         local result = Replay.run(plugin, attempt)
+        if show_losses then
+            loss_stages[#loss_stages + 1] = { attempt = attempt,
+                stage = Replay.lossStage(plugin, attempt) }
+        end
         if result.short then
             short = short + 1
         else
@@ -695,9 +702,9 @@ local function main(args)
     end
     if show_losses then
         local counts, groups = {}, {}
-        for _, attempt in ipairs(attempts) do
-            local stage = Replay.lossStage(plugin, attempt)
-            local group = lengthGroup(attempt)
+        for _, entry in ipairs(loss_stages) do
+            local stage = entry.stage
+            local group = lengthGroup(entry.attempt)
             counts[stage] = (counts[stage] or 0) + 1
             groups[group] = groups[group] or {}
             groups[group][stage] = (groups[group][stage] or 0) + 1

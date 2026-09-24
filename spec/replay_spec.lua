@@ -119,6 +119,31 @@ it("learns the intended word after its swipe", function()
     Replay.learn(plugin, attempt)  -- no context model: no error
 end)
 
+it("classifies a loss stage before its own pair is learned, but "
+        .. "after an earlier attempt's", function()
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    local first = attemptFor("water")
+    first.previous_word = "the"
+    local second = attemptFor("water")
+    second.previous_word = "the"
+    -- Boosts every rival of water, but only until "the" has paired
+    -- with water once -- mirrors what a real learned pair does,
+    -- without depending on scoring's raw preference between words.
+    with_context.context_model.bonus = function(_, previous, word)
+        local counts = with_context.context_model:getCounts()
+        local learned = previous == "the" and counts["the"]
+            and counts["the"]["water"]
+        return (not learned or learned == 0) and word ~= "water"
+            and 1e7 or 0
+    end
+    T.truthy(Replay.lossStage(with_context, first) ~= "first",
+        "water should not be first before its own pair is learned")
+    Replay.learn(with_context, first)
+    -- The pair learned from "first" is available to "second", a
+    -- later attempt with the same previous word.
+    T.eq(Replay.lossStage(with_context, second), "first")
+end)
+
 it("names the stage where the intended word was lost", function()
     local attempt = attemptFor("water")
     T.eq(Replay.lossStage(plugin, attempt), "first")
