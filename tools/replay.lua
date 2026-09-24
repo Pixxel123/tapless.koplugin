@@ -2,7 +2,8 @@
 -- directory's recognition code and reports accuracy.
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
---     [--misses] [--losses] SESSION.jsonl...
+--     [--context] [--context-settings FILE] [--misses] [--losses]
+--     SESSION.jsonl...
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 
@@ -32,6 +33,20 @@ package.preload["datastorage"] = package.preload["datastorage"] or
 
 local Replay = {}
 
+-- The device settings key ContextModel's counts are saved under.
+local CONTEXT_SETTING_KEY = "keyboard_swype_mvp_context_counts"
+
+local function deepCopy(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    local copy = {}
+    for key, inner in pairs(value) do
+        copy[key] = deepCopy(inner)
+    end
+    return copy
+end
+
 local function readManifest(path)
     local manifest = {}
     local file = io.open(path, "r")
@@ -50,6 +65,9 @@ end
 
 -- Loads a plugin directory's recognition modules. options.personal_dir,
 -- if given, wires up a personal dictionary read from that folder.
+-- options.context, if true, gives plugin.context_model: a real
+-- ContextModel over an in-memory settings object, seeded with a deep
+-- copy of options.context_counts when given.
 function Replay.loadPlugin(plugin_dir, options)
     local function load(name)
         return dofile(plugin_dir .. "/" .. name .. ".lua")
@@ -92,6 +110,26 @@ function Replay.loadPlugin(plugin_dir, options)
     local personal_dictionary = options and options.personal_dir
         and load("personal_dictionary"):new(normalization,
             load("dictionary_index"), options.personal_dir)
+    local context_model
+    if options and options.context then
+        local settings = {
+            values = {},
+            readSetting = function(self, key, default)
+                local value = self.values[key]
+                if value == nil then return default end
+                return value
+            end,
+            saveSetting = function(self, key, value)
+                self.values[key] = value
+            end,
+        }
+        if options.context_counts then
+            settings.values[CONTEXT_SETTING_KEY] =
+                deepCopy(options.context_counts)
+        end
+        context_model = load("context_model"):new(settings,
+            CONTEXT_SETTING_KEY)
+    end
     return {
         dir = plugin_dir,
         manifest = manifest,
@@ -99,6 +137,7 @@ function Replay.loadPlugin(plugin_dir, options)
         geometry = load("keyboard_geometry"):new(normalization),
         trace_collector = load("trace_collector"),
         gesture_controller = load("gesture_controller"),
+        context_model = context_model,
         engine = load("recognition_engine"):new(store,
             load("scoring"):new(normalization),
             load("geometry_reranker"):new(),
@@ -212,15 +251,20 @@ function Replay.run(plugin, attempt)
     local signature = finalized and finalized.signature or ""
     if #signature < 2 then
         return { short = true, letters = signature, words = {},
-            personal = {} }
+            personal = {}, bonus = {} }
     end
     local trace_info = finalized.trace_info
     local geometry = plugin.geometry
     local start = trace_info.points and trace_info.points[1]
-    -- No context_bonus here: replay does not reproduce the device's
-    -- saved word-pair learning (a stated not-goal), so device accuracy
-    -- can drift above replay's, especially over repeated sessions with
-    -- the same sentence pool. Personal words come in with --personal.
+    -- context_bonus, when plugin.context_model exists (--context),
+    -- scores pairs learned from swipes replayed so far this run
+    -- (Replay.learn), not from the device's own saved counts, unless
+    -- seeded with --context-settings. Personal words come in with
+    -- --personal.
+    local context_bonus = plugin.context_model and function(previous_word,
+            word)
+        return plugin.context_model:bonus(previous_word, word)
+    end or nil
     local candidates = plugin.engine:pickCandidates{
         signature = signature,
         limit = 4,
@@ -235,13 +279,30 @@ function Replay.run(plugin, attempt)
                 last, profile)
         end,
         normalization_profile = profile,
+        context_bonus = context_bonus,
     }
-    local words, personal = {}, {}
+    local words, personal, bonus = {}, {}, {}
     for index, candidate in ipairs(candidates) do
         words[index] = candidate.word
         personal[index] = candidate.personal == true
+        if context_bonus then
+            bonus[index] = context_bonus(trace_info.previous_word,
+                candidate.word)
+        end
     end
-    return { letters = signature, words = words, personal = personal }
+    return { letters = signature, words = words, personal = personal,
+        bonus = bonus }
+end
+
+-- Learns attempt's target as following its previous word, in
+-- plugin.context_model, when both the model and a previous word
+-- exist. No-op otherwise.
+function Replay.learn(plugin, attempt)
+    local previous_word = attempt.previous_word
+    if plugin.context_model and previous_word and attempt.target then
+        plugin.context_model:learn(previous_word:lower(),
+            attempt.target:lower())
+    end
 end
 
 -- The stages a swipe's intended word passes on its way to first place,
@@ -446,6 +507,7 @@ local function main(args)
     local compare_dir, show_misses, show_losses, paths = nil, false, false,
         {}
     local personal_dir
+    local use_context, context_settings = false, nil
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -458,6 +520,11 @@ local function main(args)
         elseif value == "--personal" then
             index = index + 1
             personal_dir = args[index]
+        elseif value == "--context" then
+            use_context = true
+        elseif value == "--context-settings" then
+            index = index + 1
+            context_settings = args[index]
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -469,7 +536,8 @@ local function main(args)
     end
     if #paths == 0 then
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
-            .. "[--compare DIR] [--personal DIR] [--misses] [--losses] "
+            .. "[--compare DIR] [--personal DIR] [--context] "
+            .. "[--context-settings FILE] [--misses] [--losses] "
             .. "SESSION.jsonl...\n")
         os.exit(2)
     end
@@ -482,12 +550,16 @@ local function main(args)
     end
 
     local attempts = readSessions(paths, json)
-    local options = personal_dir and { personal_dir = personal_dir }
+    local context_counts = context_settings
+        and dofile(context_settings)[CONTEXT_SETTING_KEY]
+    local options = { personal_dir = personal_dir, context = use_context,
+        context_counts = context_counts }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
+    local context_first, context_first_before = 0, 0
     for _, attempt in ipairs(attempts) do
         local result = Replay.run(plugin, attempt)
         if result.short then
@@ -497,6 +569,10 @@ local function main(args)
             if result.personal[1] and (result.words[1] or ""):lower()
                     ~= target then
                 personal_first = personal_first + 1
+            end
+            if result.bonus[1] and result.bonus[1] > 0
+                    and (result.words[1] or ""):lower() ~= target then
+                context_first = context_first + 1
             end
             local device_words = {}
             for position, candidate in ipairs(attempt.candidates or {}) do
@@ -524,6 +600,11 @@ local function main(args)
                         and (before.words[1] or ""):lower() ~= target then
                     personal_first_before = personal_first_before + 1
                 end
+                if not before.short and before.bonus[1]
+                        and before.bonus[1] > 0
+                        and (before.words[1] or ""):lower() ~= target then
+                    context_first_before = context_first_before + 1
+                end
                 local was = not before.short and hit(before, 1)
                 local now = hit(row, 1)
                 if now and not was then
@@ -531,6 +612,14 @@ local function main(args)
                 elseif was and not now then
                     table.insert(changes.broke, { row, before })
                 end
+            end
+        end
+        if use_context then
+            -- Learn after scoring, so this attempt's own pair cannot
+            -- help rank its own words (file order, no look-ahead).
+            Replay.learn(plugin, attempt)
+            if other then
+                Replay.learn(other, attempt)
             end
         end
     end
@@ -573,6 +662,16 @@ local function main(args)
         else
             print(string.format("\nPersonal words put first over the "
                 .. "intended word: %d", personal_first))
+        end
+    end
+    if use_context then
+        if other then
+            print(string.format("\nLearned word pairs put first over "
+                .. "the intended word: %d (was %d)", context_first,
+                context_first_before))
+        else
+            print(string.format("\nLearned word pairs put first over "
+                .. "the intended word: %d", context_first))
         end
     end
 

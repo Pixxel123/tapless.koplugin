@@ -95,6 +95,30 @@ it("replays with personal words from a folder", function()
     os.remove(dir)
 end)
 
+it("lets a learned word pair change the first choice", function()
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    local attempt = attemptFor("water")
+    attempt.previous_word = "the"
+    T.eq(Replay.run(with_context, attempt).words[1], "water")
+    -- Every word but water now follows "the" as often as it can.
+    with_context.context_model.bonus = function(_, previous, word)
+        return previous == "the" and word ~= "water" and 1e7 or 0
+    end
+    local result = Replay.run(with_context, attempt)
+    T.truthy(result.words[1] ~= "water", "a paired word came first")
+    T.eq(result.bonus[1], 1e7)
+end)
+
+it("learns the intended word after its swipe", function()
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    local attempt = attemptFor("water")
+    attempt.previous_word = "The"
+    Replay.learn(with_context, attempt)
+    T.truthy(with_context.context_model:bonus("the", "water") > 0,
+        "the -> water learned")
+    Replay.learn(plugin, attempt)  -- no context model: no error
+end)
+
 it("names the stage where the intended word was lost", function()
     local attempt = attemptFor("water")
     T.eq(Replay.lossStage(plugin, attempt), "first")
