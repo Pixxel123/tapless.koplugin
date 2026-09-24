@@ -58,4 +58,22 @@ it("summarizes first-choice and top-four accuracy", function()
     T.eq(summary.all.top4, 2)
     T.eq(summary.groups.a.top4, 2)
     T.eq(summary.groups.b.top1, 0)
+    -- water first, hello second, cold missing: 1 + 1/2 + 0.
+    T.eq(summary.all.rr, 1.5)
+    T.eq(summary.groups.b.rr, 0)
+end)
+
+it("gives the chance a fixed/broken split is luck", function()
+    local function near(actual, expected)
+        T.truthy(math.abs(actual - expected) < 1e-9,
+            "expected " .. expected .. ", got " .. actual)
+    end
+    near(Replay.mcnemar(5, 1), 0.21875)
+    near(Replay.mcnemar(1, 5), 0.21875)
+    near(Replay.mcnemar(10, 0), 0.001953125)
+    T.eq(Replay.mcnemar(3, 3), 1)
+    T.eq(Replay.mcnemar(0, 0), 1)
+    -- Large counts must not underflow to zero or overflow.
+    local p = Replay.mcnemar(700, 650)
+    T.truthy(p > 0.15 and p < 0.2, "700/650 gave " .. p)
 end)

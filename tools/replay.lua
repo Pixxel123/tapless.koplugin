@@ -239,16 +239,44 @@ local function hit(row, limit)
     return false
 end
 
+-- 1 / the intended word's place among the suggestions, or 0 when it is
+-- not there. Averaged over swipes this is the mean reciprocal rank, which
+-- also credits moving a word from fourth place to second.
+local function reciprocalRank(row)
+    local target = (row.target or ""):lower()
+    for index, word in ipairs(row.words or {}) do
+        if word:lower() == target then
+            return 1 / index
+        end
+    end
+    return 0
+end
+
+-- Exact two-sided McNemar test on the swipes a change fixed and broke:
+-- the chance of a split at least this uneven if the change made no
+-- difference, so that each changed swipe was a fair coin toss.
+function Replay.mcnemar(fixed, broken)
+    local n = fixed + broken
+    local log_half_n = n * math.log(0.5)
+    local tail, log_choose = 0, 0
+    for i = 0, math.min(fixed, broken) do
+        tail = tail + math.exp(log_choose + log_half_n)
+        log_choose = log_choose + math.log(n - i) - math.log(i + 1)
+    end
+    return math.min(1, 2 * tail)
+end
+
 -- rows: { target, words }. group(row) names the row's group, or nil.
 function Replay.summarize(rows, group)
     local function tally()
-        return { n = 0, top1 = 0, top4 = 0 }
+        return { n = 0, top1 = 0, top4 = 0, rr = 0 }
     end
     local summary = { all = tally(), groups = {}, order = {} }
     local function add(counts, row)
         counts.n = counts.n + 1
         if hit(row, 1) then counts.top1 = counts.top1 + 1 end
         if hit(row, 4) then counts.top4 = counts.top4 + 1 end
+        counts.rr = counts.rr + reciprocalRank(row)
     end
     for _, row in ipairs(rows) do
         add(summary.all, row)
@@ -384,11 +412,12 @@ local function main(args)
     }
     print(string.format("%d swipes replayed, %d too short to be swipes",
         #replayed, short))
-    print(string.format("%-24s %6s  %7s %7s  %7s %7s", "", "n",
-        "replay", "top 4", "device", "top 4"))
+    print(string.format("%-24s %6s  %7s %7s %6s  %7s %7s", "", "n",
+        "replay", "top 4", "MRR", "device", "top 4"))
     local function line(name, counts, device_counts)
-        print(string.format("%-24s %6d  %7s %7s  %7s %7s", name, counts.n,
-            percent(counts.top1, counts.n), percent(counts.top4, counts.n),
+        print(string.format("%-24s %6d  %7s %7s %6.3f  %7s %7s", name,
+            counts.n, percent(counts.top1, counts.n),
+            percent(counts.top4, counts.n), counts.rr / counts.n,
             percent(device_counts.top1, device_counts.n),
             percent(device_counts.top4, device_counts.n)))
     end
@@ -406,8 +435,10 @@ local function main(args)
             table.concat(row.words, ", "))
     end
     if other then
-        print(string.format("\nCompared with %s: %d fixed, %d broken",
-            compare_dir, #changes.fixed, #changes.broke))
+        print(string.format(
+            "\nCompared with %s: %d fixed, %d broken (McNemar p = %.2g)",
+            compare_dir, #changes.fixed, #changes.broke,
+            Replay.mcnemar(#changes.fixed, #changes.broke)))
         for _, pair in ipairs(changes.fixed) do
             print("  fixed  " .. describe(pair[1]) .. "   (was "
                 .. table.concat(pair[2].words or {}, ", ") .. ")")
