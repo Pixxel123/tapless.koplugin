@@ -23,6 +23,7 @@ local specs = {
     "keyboard_ui_spec",
     "candidate_row_spec",
     "dictionary_registry_spec",
+    "usage_model_spec",
 }
 
 for _, name in ipairs(specs) do
