@@ -204,12 +204,15 @@ local function install()
 
     wrap("_swypeFinalizeSignature",
             function(original, keyboard, signature, trace_info)
+        -- Read the keys before the word goes in: typing it can rebuild
+        -- the keyboard, and keys not laid out again yet read as 0, 0.
+        local ok, keys = pcall(keyRects, keyboard)
         local result = original(keyboard, signature, trace_info)
         checkFlag()
         safely(function()
             recorder:finalize(signature, trace_info, {
                 dictionary = keyboard.swype_mvp_dictionary or "en",
-                keys = keyRects(keyboard),
+                keys = ok and keys or {},
             })
         end)
         return result
