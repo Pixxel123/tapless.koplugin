@@ -50,10 +50,13 @@ function GestureController:addPoint(keyboard, pos)
         self:reset(keyboard)
     end
     keyboard.swype_mvp_last_point_time = now
-    if not keyboard.swype_mvp_trace then
+    local letter, key
+    if keyboard.swype_mvp_trace then
+        letter, key = keyboard:_swypeKeyAt(pos)
+    else
         keyboard.swype_mvp_trace = self.trace_collector:newTrace()
+        letter, key = keyboard:_swypeStartKeyAt(pos)
     end
-    local letter, key = keyboard:_swypeKeyAt(pos)
     local result = self.trace_collector:addPoint(
         keyboard.swype_mvp_trace, pos, letter, key and key.dimen, now)
     if result and result.point_added then
@@ -111,7 +114,7 @@ function GestureController:onPan(keyboard, ges)
     end
     if not keyboard.swype_mvp_trace then
         local start_pos = ges and ges.start_pos
-        local start_letter = keyboard:_swypeKeyAt(start_pos)
+        local start_letter = keyboard:_swypeStartKeyAt(start_pos)
         if not start_letter then
             return false
         end
@@ -132,7 +135,7 @@ function GestureController:onPathRelease(keyboard, ges, source_key)
     if not keyboard.swype_mvp_trace then
         start_pos = ges and (ges.start_pos or ges.pos)
         if start_pos then
-            local start_letter = keyboard:_swypeKeyAt(start_pos)
+            local start_letter = keyboard:_swypeStartKeyAt(start_pos)
             if not start_letter then
                 return false
             end
@@ -165,7 +168,7 @@ function GestureController:onPanRelease(keyboard, ges)
     end
     if not keyboard.swype_mvp_trace then
         local start_pos = ges and ges.start_pos
-        local start_letter = keyboard:_swypeKeyAt(start_pos)
+        local start_letter = keyboard:_swypeStartKeyAt(start_pos)
         if not start_letter then
             return false
         end

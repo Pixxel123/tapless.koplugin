@@ -201,6 +201,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
             self.layout, pos, self.swype_mvp_normalization_profile)
     end
 
+    -- Like _swypeKeyAt, but a start on a number key counts as a start on the
+    -- letter key below it.
+    function VirtualKeyboard:_swypeStartKeyAt(pos)
+        return adapter.keyboard_geometry:startKeyAt(
+            self.layout, pos, self.swype_mvp_normalization_profile)
+    end
+
     function VirtualKeyboard:_swypeEndpointLetters(pos, exact_last)
         return adapter.keyboard_geometry:endpointLetters(
             self.layout, pos, exact_last,

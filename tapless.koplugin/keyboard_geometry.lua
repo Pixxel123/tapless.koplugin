@@ -41,6 +41,41 @@ function KeyboardGeometry:keyAt(layout, pos, profile)
     end
 end
 
+local function isNumberKey(key)
+    return not key.is_swype_candidate and type(key.key) == "string"
+        and key.key:match("^%d$") ~= nil
+end
+
+-- The key a swipe started on. A finger aiming at a key on the top letter
+-- row often lands just above it, on the number row, so a start on a number
+-- key counts as a start on the letter key straight below it. A number key
+-- with no letter below it stays a number key.
+function KeyboardGeometry:startKeyAt(layout, pos, profile)
+    local letter, key = self:keyAt(layout, pos, profile)
+    if letter or not key or not isNumberKey(key) then
+        return letter, key
+    end
+    local bottom = key.dimen.y + key.dimen.h
+    local below
+    for _, row in ipairs(layout) do
+        for _, candidate in ipairs(row) do
+            local dimen = candidate.dimen
+            if dimen and not candidate.is_swype_candidate
+                    and dimen.y >= bottom
+                    and pos.x >= dimen.x and pos.x <= dimen.x + dimen.w
+                    and (not below or dimen.y < below.dimen.y) then
+                below = candidate
+            end
+        end
+    end
+    local normalized = below and self.normalization:normalizeText(
+        below.key or below.label, profile)
+    if normalized and #normalized == 1 then
+        return normalized, below
+    end
+    return letter, key
+end
+
 -- Distance from pos to the nearest point of a key, in key widths across
 -- and key heights down.
 local function gapTo(dimen, pos)

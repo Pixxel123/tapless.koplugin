@@ -46,6 +46,26 @@ it("types a one-letter trace as a tap once the finger lifts", function()
     T.eq(state.recorded, nil, "no leftover swipe state")
 end)
 
+it("types the number key a one-letter trace began on, not the letter below",
+        function()
+    local state = {}
+    local keyboard = newKeyboard(state)
+    local number_key = {
+        key = "5",
+        onTapSelect = function() state.typed = "5" end,
+    }
+    -- The first point lies on a number key, which is no letter.
+    keyboard._swypeKeyAt = function(_, pos)
+        if pos then return nil, number_key end
+    end
+    local handled = newController():finalizeSignature(keyboard, "t", {
+        letter_points = { { x = 1, y = 1 } },
+        released = true,
+    })
+    T.truthy(handled)
+    T.eq(state.typed, "5", "typed")
+end)
+
 it("ignores a one-letter trace finalized by the idle timer", function()
     local state = {}
     newController():finalizeSignature(newKeyboard(state), "a", {

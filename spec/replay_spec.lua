@@ -47,6 +47,50 @@ it("treats a point on a key edge as KOReader does", function()
     T.eq(Replay.run(plugin, attempt).letters:sub(1, 1), "q")
 end)
 
+-- The default keys pushed down a row, under a number row, with every swipe
+-- landing on the number key above where the word's first letter is.
+local function numberRowAttempt(word)
+    local layout = {}
+    for _, key in ipairs(keys()) do
+        key.row = key.row + 1
+        key.y = key.y + 70
+        layout[#layout + 1] = key
+    end
+    local first
+    for _, key in ipairs(layout) do
+        first = first or (key.key == word:sub(1, 1) and key)
+    end
+    for index, digit in ipairs({ "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            "0" }) do
+        table.insert(layout, index, { row = 1, key = digit,
+            x = (index - 1) * 125, y = 0, w = 125, h = 70 })
+    end
+    local attempt = CleanSwipes.attempt(word, layout)
+    local start = { first.x + 70, 60 }
+    for _, event in ipairs(attempt.events) do
+        event.start = start
+    end
+    return attempt
+end
+
+it("replays a swipe that began on the number row above its first key",
+        function()
+    T.eq(Replay.run(plugin, numberRowAttempt("water")).words[1], "water")
+end)
+
+it("replays with a plugin from before number-row starts", function()
+    local geometry = setmetatable({}, { __index = function(_, name)
+        if name ~= "startKeyAt" then
+            return function(_, ...)
+                return plugin.geometry[name](plugin.geometry, ...)
+            end
+        end
+    end })
+    local old = setmetatable({ geometry = geometry }, { __index = plugin })
+    T.truthy(Replay.run(old, numberRowAttempt("water")).short)
+    T.eq(Replay.run(old, attemptFor("water")).words[1], "water")
+end)
+
 it("summarizes first-choice and top-four accuracy", function()
     local summary = Replay.summarize({
         { target = "water", words = { "water", "wafer" }, group = "a" },
