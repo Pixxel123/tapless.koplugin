@@ -51,11 +51,13 @@ local TraceRenderer = dofile(plugin_dir .. "/trace_renderer.lua")
     :new(Screen, UIManager, Geom)
 local ContextModel = dofile(plugin_dir .. "/context_model.lua")
     :new(G_reader_settings, "keyboard_swype_mvp_context_counts")
+local UsageModel = dofile(plugin_dir .. "/usage_model.lua")
+    :new(G_reader_settings, "tapless_word_usage")
 local TextCase = dofile(plugin_dir .. "/text_case.lua"):new(Normalization)
 local InputController = dofile(plugin_dir .. "/input_controller.lua")
     :new(ContextModel, Normalization, logger, TextCase,
         PersonalDictionary, DictionaryStore, UIManager, G_reader_settings,
-        BlockedWords, time)
+        BlockedWords, time, UsageModel)
 local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
     :new{
         plugin_dir = plugin_dir,

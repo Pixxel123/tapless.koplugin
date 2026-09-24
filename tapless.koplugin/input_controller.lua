@@ -4,12 +4,18 @@ local Utf8Proc = require("ffi/utf8proc")
 
 InputController.DOUBLE_SPACE_SETTING = "tapless_double_space_period"
 
+-- What a word picked from the suggestions counts for in the usage model. A
+-- word swiped and left in the text counts for one.
+InputController.PICK_USES = 2
+
+-- usage_model, which counts the words the user keeps, is optional.
 function InputController:new(context_model, normalization, logger, text_case,
         personal_dictionary, dictionary_store, ui_manager, settings,
-        blocked_words, time_api)
+        blocked_words, time_api, usage_model)
     return setmetatable({
         blocked_words = blocked_words,
         time = time_api,
+        usage_model = usage_model,
         settings = assert(settings),
         context_model = assert(context_model),
         normalization = assert(normalization),
@@ -173,12 +179,25 @@ function InputController:learnContext(previous_word, word)
     self.context_model:learn(previous_word, word)
 end
 
+function InputController:wordUses(word)
+    return self.usage_model and self.usage_model:uses(word) or 0
+end
+
+-- The last swiped word is kept once something else happens: it is learned
+-- as following the word before it, and counted as used.
 function InputController:commitPendingContext(keyboard)
-    self.context_model:commit(keyboard.swype_mvp_session:getLastInsert())
+    local pending = keyboard.swype_mvp_session:getLastInsert()
+    self.context_model:commit(pending)
+    if self.usage_model then
+        self.usage_model:commit(pending)
+    end
 end
 
 function InputController:saveContext()
     self.context_model:save()
+    if self.usage_model then
+        self.usage_model:save()
+    end
 end
 
 function InputController:clearCandidateState(keyboard, keep_debug)
@@ -209,7 +228,9 @@ function InputController:rejectLastInsert(keyboard)
     return false
 end
 
-function InputController:selectCandidate(keyboard, candidate)
+-- uses is what the word counts for: a pick by default, less when the user
+-- did not choose it.
+function InputController:selectCandidate(keyboard, candidate, uses)
     local selection = keyboard.swype_mvp_session:selection(candidate)
     if not selection then
         self:clearCandidateRow(keyboard)
@@ -222,6 +243,10 @@ function InputController:selectCandidate(keyboard, candidate)
         "swype mvp selected", candidate.signature, "=>", candidate.word)
     self:learnContext(selection.pending.previous_word, candidate.word)
     selection.pending.context_committed = true
+    if self.usage_model then
+        self.usage_model:learn(candidate.word, uses or self.PICK_USES)
+        selection.pending.usage_committed = true
+    end
     keyboard.inputbox:addChars(selection.replacement)
     self:_markPendingSpace(keyboard)
     self:clearCandidateState(keyboard)
@@ -246,7 +271,8 @@ function InputController:blockCandidate(keyboard, candidate)
     local last_insert = session:getLastInsert()
     if last_insert and last_insert.word == candidate.word then
         if remaining[1] then
-            self:selectCandidate(keyboard, remaining[1])
+            -- The user did not choose the replacement, only refused the word.
+            self:selectCandidate(keyboard, remaining[1], 1)
         else
             self:rejectLastInsert(keyboard)
         end

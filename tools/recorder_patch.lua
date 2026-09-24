@@ -61,21 +61,27 @@ local function findUpvalue(fn, wanted)
 end
 
 -- Prompted words are not what the tester would type, so the keyboard must
--- not learn which words follow which from them. Returns a function that
--- turns learning back on.
-local function pauseContextLearning(VirtualKeyboard)
+-- not learn which words follow which, or which words are used, from them.
+-- Returns a function that turns learning back on.
+local function pauseLearning(VirtualKeyboard)
     local adapter = type(VirtualKeyboard._swypeCommitPendingContext)
             == "function"
         and findUpvalue(VirtualKeyboard._swypeCommitPendingContext, "adapter")
-    local context_model = type(adapter) == "table" and adapter.input_controller
-        and adapter.input_controller.context_model
-    if type(context_model) ~= "table" or not context_model.learn then
-        logger.warn("Tapless recorder: cannot pause word-pair learning")
-        return function() end
+    local controller = type(adapter) == "table" and adapter.input_controller
+    local paused = {}
+    for _, name in ipairs({ "context_model", "usage_model" }) do
+        local model = controller and controller[name]
+        if type(model) == "table" and model.learn then
+            model.learn = function() end
+            paused[#paused + 1] = model
+        else
+            logger.warn("Tapless recorder: cannot pause learning", name)
+        end
     end
-    context_model.learn = function() end
     return function()
-        context_model.learn = nil
+        for _, model in ipairs(paused) do
+            model.learn = nil
+        end
     end
 end
 
@@ -92,7 +98,7 @@ local function install()
     local Recorder = dofile(dev_dir .. "/recorder.lua")
 
     local mode = readLines(dev_dir .. "/mode")[1] or "words"
-    local resumeContextLearning = pauseContextLearning(VirtualKeyboard)
+    local resumeLearning = pauseLearning(VirtualKeyboard)
     local log = assert(io.open(dev_dir .. "/session.jsonl", "a"))
     local active = true
     local toast
@@ -119,7 +125,7 @@ local function install()
             return
         end
         active = false
-        resumeContextLearning()
+        resumeLearning()
         if toast then
             UIManager:close(toast)
             toast = nil

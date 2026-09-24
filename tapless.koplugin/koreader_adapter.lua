@@ -260,6 +260,9 @@ function KoreaderAdapter:install(VirtualKeyboard)
             context_bonus = function(previous_word, word)
                 return self:_swypeContextBonus(previous_word, word)
             end,
+            word_uses = function(word)
+                return self:_swypeWordUses(word)
+            end,
             normalization_profile = self.swype_mvp_normalization_profile,
         }
     end
@@ -270,6 +273,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
 
     function VirtualKeyboard:_swypeContextBonus(previous_word, word)
         return adapter.input_controller:contextBonus(previous_word, word)
+    end
+
+    function VirtualKeyboard:_swypeWordUses(word)
+        return adapter.input_controller:wordUses(word)
     end
 
     function VirtualKeyboard:_swypeCommitPendingContext()

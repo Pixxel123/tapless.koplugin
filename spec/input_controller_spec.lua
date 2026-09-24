@@ -1,7 +1,7 @@
 local T = require("helper")
 local it = T.it
 
-local function newController(settings, clock)
+local function newController(settings, clock, usage_model)
     local InputController = T.load("input_controller")
     local logger = { dbg = function() end, warn = function() end }
     local ui_manager = { scheduleIn = function() end }
@@ -13,7 +13,7 @@ local function newController(settings, clock)
         }, nil, clock and {
             now = function() return clock.now end,
             ms = function(ms) return ms * 1000 end,
-        })
+        }, usage_model)
 end
 
 local function newKeyboard(state)
@@ -345,7 +345,7 @@ it("keeps a pending space to the text field it belongs to", function()
 end)
 
 -- A text box and keyboard around a real input session, for blocking.
-local function blockingSetup()
+local function blockingSetup(usage_model)
     local InputController = T.load("input_controller")
     local blocked, unblocked = {}, {}
     local blocked_words = {
@@ -365,7 +365,8 @@ local function blockingSetup()
         { learn = function() end, commit = function() end },
         T.normalization, { dbg = function() end, warn = function() end }, {},
         personal, {}, { scheduleIn = function() end },
-        { isTrue = function() return false end }, blocked_words)
+        { isTrue = function() return false end }, blocked_words, nil,
+        usage_model)
     local inputbox = { text = "" }
     function inputbox:addChars(chars)
         self.text = self.text .. chars
@@ -413,4 +414,104 @@ it("unblocks a word added to personal words", function()
     keyboard.swype_mvp_session:setPersonalOffer({ word = "bq" })
     T.truthy(controller:addPersonalWord(keyboard))
     T.eq(unblocked[1], "en:bq")
+end)
+
+-- A real usage model over settings held in memory.
+local function newUsageModel()
+    local values = {}
+    local settings = {
+        readSetting = function(_, key, default)
+            if values[key] == nil then return default end
+            return values[key]
+        end,
+        saveSetting = function(_, key, value) values[key] = value end,
+    }
+    return T.load("usage_model"):new(settings, "usage"), values
+end
+
+-- A controller that counts kept words, a keyboard to type them on, and the
+-- model.
+local function usageSetup()
+    local model, values = newUsageModel()
+    local controller = newController(nil, nil, model)
+    controller.context_model.learn = function() end
+    local keyboard = newTypingKeyboard()
+    keyboard._swypeReset = function() end
+    return controller, keyboard, model, values
+end
+
+it("counts a swiped word once it is left in the text", function()
+    local controller, keyboard, model = usageSetup()
+    swipe(controller, keyboard, "hello", "hollow")
+    T.eq(model:uses("hello"), 0, "not until it is kept")
+    controller:commitPendingContext(keyboard)
+    controller:commitPendingContext(keyboard)
+    T.eq(model:uses("hello"), 1)
+    T.eq(model:uses("hollow"), 0)
+end)
+
+it("counts a picked word twice, and only that word", function()
+    local controller, keyboard, model = usageSetup()
+    swipe(controller, keyboard, "hello", "hollow")
+    controller:selectCandidate(keyboard, { word = "hollow" })
+    T.eq(model:uses("hollow"), 2)
+    T.eq(model:uses("hello"), 0, "the first choice was replaced")
+    controller:commitPendingContext(keyboard)
+    T.eq(model:uses("hollow"), 2, "the pick is not counted again")
+end)
+
+it("counts nothing for a swiped word that is deleted again", function()
+    local controller, keyboard, model = usageSetup()
+    swipe(controller, keyboard, "hello")
+    controller:delChar(keyboard)
+    controller:commitPendingContext(keyboard)
+    T.eq(model:uses("hello"), 0)
+end)
+
+it("counts a word swiped after a deleted one as a new word", function()
+    local controller, keyboard, model = usageSetup()
+    swipe(controller, keyboard, "hello")
+    controller:delChar(keyboard)
+    swipe(controller, keyboard, "hollow")
+    controller:commitPendingContext(keyboard)
+    T.eq(model:uses("hello"), 0)
+    T.eq(model:uses("hollow"), 1)
+end)
+
+it("counts the suggestion that replaces a blocked word once", function()
+    local model = newUsageModel()
+    local controller, keyboard, candidates = blockingSetup(model)
+    T.truthy(controller:blockCandidate(keyboard, candidates[1]))
+    T.eq(model:uses("wax"), 1, "the user did not choose it")
+    T.eq(model:uses("was"), 0)
+end)
+
+it("tells recognition how often a word was kept", function()
+    local controller, _, model = usageSetup()
+    T.eq(controller:wordUses("water"), 0)
+    model:learn("water", 3)
+    T.eq(controller:wordUses("water"), 3)
+    T.eq(newController():wordUses("water"), 0, "with no model")
+end)
+
+it("saves the counts along with the word pairs", function()
+    local controller, _, model, values = usageSetup()
+    local pairs_saved = 0
+    controller.context_model.save = function() pairs_saved = pairs_saved + 1 end
+    model:learn("water")
+    controller:saveContext()
+    T.eq(pairs_saved, 1)
+    T.eq(values.usage.water, 1)
+end)
+
+it("keeps learning words optional", function()
+    local controller = newController()
+    controller.context_model.learn = function() end
+    local keyboard = newTypingKeyboard()
+    swipe(controller, keyboard, "hello", "hollow")
+    controller:selectCandidate(keyboard, { word = "hollow" })
+    controller:commitPendingContext(keyboard)
+    controller.context_model.save = function() end
+    controller:saveContext()
+    T.eq(keyboard.inputbox:text(), "hollow")
 end)
