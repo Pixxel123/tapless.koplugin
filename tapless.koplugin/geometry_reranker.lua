@@ -1,6 +1,6 @@
 local GeometryReranker = {
     SAMPLE_COUNT = 20,
-    RANK_WEIGHT = 1800,
+    RANK_WEIGHT = 3089,
     MAX_SCORE = 2,
 }
 GeometryReranker.__index = GeometryReranker
