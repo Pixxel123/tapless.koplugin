@@ -81,7 +81,8 @@ it("replays a swipe that began on the number row above its first key",
     T.eq(Replay.run(plugin, numberRowAttempt("water")).words[1], "water")
 end)
 
-it("replays with a plugin from before number-row starts", function()
+-- A plugin from before number-row starts: its geometry has no startKeyAt.
+local function oldPlugin()
     local geometry = setmetatable({}, { __index = function(_, name)
         if name ~= "startKeyAt" then
             return function(_, ...)
@@ -89,9 +90,131 @@ it("replays with a plugin from before number-row starts", function()
             end
         end
     end })
-    local old = setmetatable({ geometry = geometry }, { __index = plugin })
+    return setmetatable({ geometry = geometry }, { __index = plugin })
+end
+
+it("replays with a plugin from before number-row starts", function()
+    local old = oldPlugin()
     T.truthy(Replay.run(old, numberRowAttempt("water")).short)
     T.eq(Replay.run(old, attemptFor("water")).words[1], "water")
+end)
+
+it("knows a swipe began on a number key", function()
+    T.eq(Replay.startedOnNumberKey(plugin, numberRowAttempt("water")), true)
+    T.eq(Replay.startedOnNumberKey(plugin, attemptFor("water")), false)
+    T.eq(Replay.startedOnNumberKey(plugin, { keys = {}, events = {} }), false)
+    T.eq(Replay.startedOnNumberKey(plugin, {}), false)
+    -- A plugin from before number-row starts cannot say.
+    T.eq(Replay.startedOnNumberKey(oldPlugin(), numberRowAttempt("water")),
+        false)
+end)
+
+-- The dispatched gestures of a swipe from the number row: a swipe KOReader
+-- took, a tap on a digit, and then the attempt's own swipe.
+local function numberRowGestures(attempt)
+    local start = attempt.events[1].start
+    return {
+        { ges = "touch", pos = { 100, 100 } },
+        { ges = "swipe", pos = { 100, 100 } },
+        { ges = "touch", pos = start },
+        { ges = "pan", pos = { start[1] + 5, start[2] } },
+        { ges = "multiswipe", pos = start },
+        { ges = "touch", pos = { 300, 30 } },
+        { ges = "tap", pos = { 300, 30 } },
+        { ges = "touch", pos = start },
+        { ges = "pan", pos = { start[1] + 20, start[2] + 30 } },
+        { ges = "swipe", pos = start },
+    }
+end
+
+it("lists the swipes from a number key that were left to KOReader", function()
+    local attempt = numberRowAttempt("water")
+    attempt.gestures = numberRowGestures(attempt)
+    local left = Replay.numberKeyGestures(plugin, attempt)
+    T.eq(#left, 1, "the attempt's own swipe is not one of them")
+    T.eq(left[1].ends, "multiswipe")
+    T.eq(left[1].pans, 1)
+    T.eq(left[1].pos[1], attempt.events[1].start[1])
+end)
+
+it("counts every swipe from a number key when the attempt began elsewhere",
+        function()
+    local attempt = numberRowAttempt("water")
+    attempt.gestures = numberRowGestures(attempt)
+    local start = attempt.events[1].start
+    -- The attempt's own swipe began on the letter below instead.
+    for _, event in ipairs(attempt.events) do
+        event.start = { start[1], 100 }
+    end
+    local left = Replay.numberKeyGestures(plugin, attempt)
+    T.eq(#left, 2)
+    T.eq(left[2].ends, "swipe")
+    T.eq(#Replay.numberKeyGestures(plugin, attemptFor("water")), 0)
+    T.eq(#Replay.numberKeyGestures(oldPlugin(), attempt), 0,
+        "an older plugin cannot say")
+end)
+
+it("counts a slide that ends in a pan release", function()
+    local attempt = numberRowAttempt("water")
+    local start = attempt.events[1].start
+    for _, event in ipairs(attempt.events) do
+        event.start = { start[1], 100 }
+    end
+    attempt.gestures = {
+        { ges = "touch", pos = start },
+        { ges = "pan", pos = { start[1], start[2] + 4 } },
+        { ges = "pan_release", pos = { start[1], start[2] + 4 } },
+    }
+    local left = Replay.numberKeyGestures(plugin, attempt)
+    T.eq(#left, 1)
+    T.eq(left[1].ends, "pan_release")
+end)
+
+it("reports how often each suggestion was kept", function()
+    local seeded = Replay.loadPlugin(T.plugin_dir,
+        { usage = true, usage_counts = { wafer = 5, water = 1 } })
+    local result = Replay.run(seeded, attemptFor("water"))
+    local counts = { wafer = 5, water = 1 }
+    T.truthy(#result.words > 1)
+    for index, word in ipairs(result.words) do
+        T.eq(result.uses[index], counts[word] or 0, word)
+    end
+    T.eq(#Replay.run(plugin, attemptFor("water")).uses, 0,
+        "no usage model, no counts")
+end)
+
+it("tells a learned word put first from one that was right", function()
+    local function learnedFirst(words, uses, target)
+        return Replay.learnedFirst({ words = words, uses = uses }, target)
+    end
+    T.eq(learnedFirst({ "water" }, { 2 }, "Water"), "right")
+    T.eq(learnedFirst({ "wafer", "water" }, { 4, 0 }, "water"), "wrong")
+    T.eq(learnedFirst({ "wafer" }, { 1 }, "water"), nil, "used only once")
+    T.eq(learnedFirst({ "wafer" }, { 0 }, "wafer"), nil)
+    T.eq(Replay.learnedFirst({ words = { "water" }, uses = {} }, "water"), nil)
+    T.eq(Replay.learnedFirst({ words = {} , uses = {} }, "water"), nil)
+end)
+
+it("keeps counts as they stood on the device when frozen", function()
+    local frozen = Replay.loadPlugin(T.plugin_dir, { context = true,
+        usage = true, usage_counts = { water = 3 }, frozen = true })
+    local attempt = attemptFor("water")
+    attempt.previous_word = "the"
+    Replay.learn(frozen, attempt)
+    T.eq(frozen.usage_model:uses("water"), 3)
+    T.eq(frozen.context_model:bonus("the", "water"), 0)
+    frozen:resetLearning()
+    Replay.learn(frozen, attempt)
+    T.eq(frozen.usage_model:uses("water"), 3, "still frozen after a reset")
+end)
+
+it("counts the words a usage model holds", function()
+    local seeded = Replay.loadPlugin(T.plugin_dir, { usage = true,
+        usage_counts = { a = 1, b = 2, c = 9 } })
+    local known, twice = Replay.usageSize(seeded)
+    T.eq(known, 3)
+    T.eq(twice, 2)
+    T.eq(Replay.usageSize(plugin), nil)
 end)
 
 it("summarizes first-choice and top-four accuracy", function()

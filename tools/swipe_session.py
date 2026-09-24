@@ -15,6 +15,7 @@ import select
 import shlex
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
@@ -115,6 +116,21 @@ def collect(kindle):
     if not os.path.exists(dkjson):
         kindle.get(kindle.koreader + "/common/dkjson.lua", dkjson)
     return local
+
+
+def fetch_settings(kindle):
+    """Copy the Kindle's saved settings to a temporary file, for the word
+    counts the keyboard learned; None if they cannot be read. KOReader saves
+    them when it exits, and the keyboard learns nothing while a session is
+    recorded, so these are the counts the session ran with. The file holds
+    all of KOReader's settings: the caller removes it."""
+    handle, path = tempfile.mkstemp(prefix="tapless-settings-", suffix=".lua")
+    os.close(handle)
+    if kindle.get(kindle.koreader + "/settings.reader.lua", path):
+        os.chmod(path, 0o600)
+        return path
+    os.remove(path)
+    return None
 
 
 def show(record, stats):
@@ -223,8 +239,17 @@ def main():
     log = collect(kindle)
     if log:
         print(f"Saved {os.path.relpath(log, ROOT)}\n")
-        subprocess.run(["luajit", os.path.join(TOOLS, "replay.lua"),
-                        "--misses", log])
+        command = ["luajit", os.path.join(TOOLS, "replay.lua"), "--misses"]
+        settings = fetch_settings(kindle)
+        if settings:
+            # Replay with the words the keyboard had learned, as they stood.
+            command += ["--usage", "--usage-settings", settings,
+                        "--no-learning"]
+        try:
+            subprocess.run(command + [log])
+        finally:
+            if settings:
+                os.remove(settings)
 
 
 if __name__ == "__main__":

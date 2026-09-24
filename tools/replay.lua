@@ -1,10 +1,16 @@
 -- Replays recorded Tapless swipe test sessions through a plugin
--- directory's recognition code and reports accuracy.
+-- directory's recognition code and reports accuracy, including the swipes
+-- that began on a number key and the words the user has learned.
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
 --     [--context] [--context-settings FILE] [--usage]
---     [--usage-settings FILE] [--per-session] [--misses] [--losses]
---     [--keep-suspect] SESSION.jsonl...
+--     [--usage-settings FILE] [--per-session] [--no-learning] [--misses]
+--     [--losses] [--keep-suspect] SESSION.jsonl...
+--
+-- --usage-settings and --context-settings read the counts from a KOReader
+-- settings file (settings.reader.lua). A session is recorded with learning
+-- paused, so replay it with those counts and --no-learning to see what the
+-- keyboard did; leave --no-learning out to simulate learning as you go.
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 
@@ -164,6 +170,9 @@ function Replay.loadPlugin(plugin_dir, options)
             personal_dictionary),
     }
     plugin.context_model, plugin.usage_model = newLearning()
+    -- options.frozen keeps the counts as seeded: the device pauses learning
+    -- while a session is recorded.
+    plugin.frozen = options and options.frozen or false
     function plugin:resetLearning()
         self.context_model, self.usage_model = newLearning()
     end
@@ -212,11 +221,73 @@ end
 
 local function noop() end
 
+local function layoutOf(plugin, attempt)
+    local info = plugin.manifest(attempt.dictionary or "en") or {}
+    return buildLayout(attempt.keys), info.normalization_profile
+end
+
+-- Whether pos lies on a number key, from which a swipe counts as starting
+-- on the letter key below. A plugin from before number-row starts has no
+-- startKeyAt and cannot say.
+local function onNumberKey(plugin, layout, profile, pos)
+    local geometry = plugin.geometry
+    if not (geometry.startKeyAt and pos) then
+        return false
+    end
+    local point = geom(pos)
+    return geometry:keyAt(layout, point, profile) == nil
+        and geometry:startKeyAt(layout, point, profile) ~= nil
+end
+
+-- Whether the swipe began on a number key.
+function Replay.startedOnNumberKey(plugin, attempt)
+    local event = attempt.events and attempt.events[1]
+    local pos = event and (event.start or event.pos)
+    if not pos then
+        return false
+    end
+    local layout, profile = layoutOf(plugin, attempt)
+    return onNumberKey(plugin, layout, profile, pos)
+end
+
+-- The gestures that began on a number key and ended as a swipe or a slide,
+-- and so were left to KOReader, which types the digit or its alternate
+-- character: { pos, pans, ends }. attempt.gestures holds every gesture
+-- dispatched since the previous attempt, the attempt's own last. That one
+-- is not left out when the swipe began on a number key: Tapless took it.
+function Replay.numberKeyGestures(plugin, attempt)
+    local layout, profile = layoutOf(plugin, attempt)
+    local groups, group = {}, nil
+    for _, gesture in ipairs(attempt.gestures or {}) do
+        if gesture.ges == "touch" then
+            group = { pos = gesture.pos, pans = 0,
+                on_number = onNumberKey(plugin, layout, profile, gesture.pos) }
+            groups[#groups + 1] = group
+        elseif group and gesture.ges == "pan" then
+            group.pans = group.pans + 1
+        elseif group then
+            group.ends = gesture.ges
+        end
+    end
+    local own = groups[#groups]
+    local left = {}
+    for _, candidate in ipairs(groups) do
+        if candidate.on_number and (candidate.ends == "swipe"
+                or candidate.ends == "multiswipe"
+                or candidate.ends == "pan_release")
+                and not (candidate == own
+                    and Replay.startedOnNumberKey(plugin, attempt)) then
+            left[#left + 1] = candidate
+        end
+    end
+    return left
+end
+
 -- Replays one recorded attempt. Returns { letters, words, personal,
--- bonus }; personal runs parallel to words, and bonus does too when
--- plugin.context_model exists (empty otherwise). On a signature too
--- short to look up, short = true and words, personal and bonus come
--- back empty.
+-- bonus, uses }; personal runs parallel to words, and bonus does too when
+-- plugin.context_model exists, uses when plugin.usage_model does (empty
+-- otherwise). On a signature too short to look up, short = true and
+-- words, personal, bonus and uses come back empty.
 function Replay.run(plugin, attempt)
     local layout = buildLayout(attempt.keys)
     local info = plugin.manifest(attempt.dictionary or "en") or {}
@@ -287,7 +358,7 @@ function Replay.run(plugin, attempt)
     local signature = finalized and finalized.signature or ""
     if #signature < 2 then
         return { short = true, letters = signature, words = {},
-            personal = {}, bonus = {} }
+            personal = {}, bonus = {}, uses = {} }
     end
     local trace_info = finalized.trace_info
     local geometry = plugin.geometry
@@ -323,7 +394,7 @@ function Replay.run(plugin, attempt)
         context_bonus = context_bonus,
         word_uses = word_uses,
     }
-    local words, personal, bonus = {}, {}, {}
+    local words, personal, bonus, uses = {}, {}, {}, {}
     for index, candidate in ipairs(candidates) do
         words[index] = candidate.word
         personal[index] = candidate.personal == true
@@ -331,9 +402,40 @@ function Replay.run(plugin, attempt)
             bonus[index] = context_bonus(trace_info.previous_word,
                 candidate.word)
         end
+        if word_uses then
+            uses[index] = word_uses(candidate.word)
+        end
     end
     return { letters = signature, words = words, personal = personal,
-        bonus = bonus }
+        bonus = bonus, uses = uses }
+end
+
+-- "right" or "wrong" when the first suggestion is a word the user has
+-- learned, kept as often as the ranking's bonus needs, by whether it was
+-- the target; nil otherwise.
+function Replay.learnedFirst(result, target)
+    local uses = result.uses and result.uses[1]
+    if not uses or uses < 2 then
+        return nil
+    end
+    return (result.words[1] or ""):lower() == target:lower() and "right"
+        or "wrong"
+end
+
+-- How many words plugin's usage model holds, and how many of them the
+-- user has kept twice or more; nil when it has no usage model.
+function Replay.usageSize(plugin)
+    if not plugin.usage_model then
+        return nil
+    end
+    local known, twice = 0, 0
+    for _, uses in pairs(plugin.usage_model:getCounts()) do
+        known = known + 1
+        if uses >= 2 then
+            twice = twice + 1
+        end
+    end
+    return known, twice
 end
 
 -- How many uses a word picked from the suggestions earns on the device.
@@ -356,13 +458,13 @@ end
 
 -- Learns what the device learns from attempt: the kept word, as following
 -- the previous word in plugin.context_model when there is a model and a
--- previous word, and its uses in plugin.usage_model. No-op otherwise. Pairs
--- are lowercased; the device learns the chosen candidate in its dictionary
--- casing, so a capitalised dictionary word would get no pair bonus here
--- (moot for now: session words are all lowercase).
+-- previous word, and its uses in plugin.usage_model. No-op otherwise, and
+-- for a frozen plugin. Pairs are lowercased; the device learns the chosen
+-- candidate in its dictionary casing, so a capitalised dictionary word would
+-- get no pair bonus here (moot for now: session words are all lowercase).
 function Replay.learn(plugin, attempt)
     local word, uses = Replay.kept(attempt)
-    if not word then
+    if plugin.frozen or not word then
         return
     end
     local previous_word = attempt.previous_word
@@ -667,6 +769,7 @@ local function main(args)
     local personal_dir
     local use_context, context_settings = false, nil
     local use_usage, usage_settings, per_session = false, nil, false
+    local frozen = false
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -691,6 +794,8 @@ local function main(args)
             usage_settings = args[index]
         elseif value == "--per-session" then
             per_session = true
+        elseif value == "--no-learning" then
+            frozen = true
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -706,8 +811,8 @@ local function main(args)
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
             .. "[--compare DIR] [--personal DIR] [--context] "
             .. "[--context-settings FILE] [--usage] "
-            .. "[--usage-settings FILE] [--per-session] [--misses] "
-            .. "[--losses] [--keep-suspect] SESSION.jsonl...\n")
+            .. "[--usage-settings FILE] [--per-session] [--no-learning] "
+            .. "[--misses] [--losses] [--keep-suspect] SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -730,13 +835,16 @@ local function main(args)
         and dofile(usage_settings)[USAGE_SETTING_KEY]
     local options = { personal_dir = personal_dir, context = use_context,
         context_counts = context_counts, usage = use_usage,
-        usage_counts = usage_counts }
+        usage_counts = usage_counts, frozen = frozen }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
     local context_first, context_first_before = 0, 0
+    local number_starts, number_left, number_gestures = 0, 0, {}
+    local learned_right, learned_wrong = 0, 0
+    local known_at_start, twice_at_start = Replay.usageSize(plugin)
     local loss_stages = show_losses and {} or nil
     local session
     for _, attempt in ipairs(attempts) do
@@ -749,6 +857,15 @@ local function main(args)
             end
         end
         session = attempt.session
+        local number_row = Replay.startedOnNumberKey(plugin, attempt)
+        if number_row then
+            number_starts = number_starts + 1
+        end
+        for _, left in ipairs(Replay.numberKeyGestures(plugin, attempt)) do
+            number_left = number_left + 1
+            number_gestures[#number_gestures + 1] = { attempt = attempt,
+                gesture = left }
+        end
         local result, loss_stage, before =
             Replay.replayAttempt(plugin, other, attempt, show_losses)
         if show_losses then
@@ -767,6 +884,12 @@ local function main(args)
                     and (result.words[1] or ""):lower() ~= target then
                 context_first = context_first + 1
             end
+            local learned = Replay.learnedFirst(result, attempt.target)
+            if learned == "right" then
+                learned_right = learned_right + 1
+            elseif learned == "wrong" then
+                learned_wrong = learned_wrong + 1
+            end
             local device_words = {}
             for position, candidate in ipairs(attempt.candidates or {}) do
                 device_words[position] = candidate.word
@@ -776,6 +899,7 @@ local function main(args)
                 words = result.words,
                 letters = result.letters,
                 mode = attempt.mode,
+                number_row = number_row,
                 on_first_key = result.letters:sub(1, 1)
                     == attempt.target:sub(1, 1):lower(),
             }
@@ -784,6 +908,7 @@ local function main(args)
                 target = attempt.target,
                 words = device_words,
                 mode = attempt.mode,
+                number_row = number_row,
                 on_first_key = row.on_first_key,
             }
             if other then
@@ -817,6 +942,10 @@ local function main(args)
         { "start", function(row)
             return row.on_first_key and "started on first key"
                 or "started elsewhere"
+        end },
+        -- Only these swipes are grouped, so the row shows when there are any.
+        { "number row", function(row)
+            return row.number_row and "started on a number key" or nil
         end },
     }
     print(string.format("%d swipes replayed, %d too short to be swipes",
@@ -857,6 +986,19 @@ local function main(args)
             print(string.format("\nLearned word pairs put first over "
                 .. "the intended word: %d", context_first))
         end
+    end
+    if number_starts > 0 or number_left > 0 then
+        print(string.format("\nSwipes that began on a number key: %d taken "
+            .. "as word swipes, %d left to KOReader (a digit or its "
+            .. "alternate character typed)", number_starts, number_left))
+    end
+    if plugin.usage_model then
+        if known_at_start > 0 then
+            print(string.format("\nWord counts at the start: %d words, %d "
+                .. "kept twice or more", known_at_start, twice_at_start))
+        end
+        print(string.format("Learned words put first: %d right, %d wrong",
+            learned_right, learned_wrong))
     end
 
     local function describe(row)
@@ -905,6 +1047,16 @@ local function main(args)
         for _, row in ipairs(replayed) do
             if not hit(row, 1) then
                 print("  " .. describe(row))
+            end
+        end
+        if #number_gestures > 0 then
+            print("\nNumber-key gestures left to KOReader (word of the "
+                .. "swipe recorded after them, how they ended):")
+            for _, entry in ipairs(number_gestures) do
+                local left = entry.gesture
+                print(string.format("  %-14s %s after %d pans, at %d,%d",
+                    entry.attempt.target, left.ends, left.pans,
+                    left.pos[1], left.pos[2]))
             end
         end
     end
