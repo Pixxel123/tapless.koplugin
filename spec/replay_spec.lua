@@ -136,12 +136,15 @@ it("classifies a loss stage before its own pair is learned, but "
         return (not learned or learned == 0) and word ~= "water"
             and 1e7 or 0
     end
-    T.truthy(Replay.lossStage(with_context, first) ~= "first",
+    -- Drives the same function main's per-attempt loop calls, so
+    -- reverting its lossStage-before-learn order would fail this.
+    local _, stage1 = Replay.replayAttempt(with_context, nil, first, true)
+    T.truthy(stage1 ~= "first",
         "water should not be first before its own pair is learned")
-    Replay.learn(with_context, first)
     -- The pair learned from "first" is available to "second", a
     -- later attempt with the same previous word.
-    T.eq(Replay.lossStage(with_context, second), "first")
+    local _, stage2 = Replay.replayAttempt(with_context, nil, second, true)
+    T.eq(stage2, "first")
 end)
 
 it("names the stage where the intended word was lost", function()

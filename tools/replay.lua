@@ -402,6 +402,24 @@ function Replay.lossStage(plugin, attempt)
     return "outranked"
 end
 
+-- Replays one attempt through plugin (and, if given, other, for
+-- --compare), computes its loss stage first when wanted, then learns
+-- from it last -- into plugin, and other when given -- so a loss
+-- stage never sees a pair learned from its own or a later attempt.
+-- Returns plugin's result, the loss stage (or nil, unless wanted),
+-- and other's result (or nil, unless other is given).
+function Replay.replayAttempt(plugin, other, attempt, want_loss_stage)
+    local result = Replay.run(plugin, attempt)
+    local loss_stage = want_loss_stage
+        and Replay.lossStage(plugin, attempt) or nil
+    local before = other and Replay.run(other, attempt)
+    Replay.learn(plugin, attempt)
+    if other then
+        Replay.learn(other, attempt)
+    end
+    return result, loss_stage, before
+end
+
 local function hit(row, limit)
     local target = (row.target or ""):lower()
     for index = 1, math.min(limit, #row.words) do
@@ -560,14 +578,13 @@ local function main(args)
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
     local context_first, context_first_before = 0, 0
-    -- Collected here, in the same pass as Replay.learn, so a loss
-    -- stage never sees a pair learned from its own or a later attempt.
     local loss_stages = show_losses and {} or nil
     for _, attempt in ipairs(attempts) do
-        local result = Replay.run(plugin, attempt)
+        local result, loss_stage, before =
+            Replay.replayAttempt(plugin, other, attempt, show_losses)
         if show_losses then
             loss_stages[#loss_stages + 1] = { attempt = attempt,
-                stage = Replay.lossStage(plugin, attempt) }
+                stage = loss_stage }
         end
         if result.short then
             short = short + 1
@@ -601,7 +618,6 @@ local function main(args)
                 on_first_key = row.on_first_key,
             }
             if other then
-                local before = Replay.run(other, attempt)
                 before.target = attempt.target
                 if not before.short and before.personal[1]
                         and (before.words[1] or ""):lower() ~= target then
@@ -619,14 +635,6 @@ local function main(args)
                 elseif was and not now then
                     table.insert(changes.broke, { row, before })
                 end
-            end
-        end
-        if use_context then
-            -- Learn after scoring, so this attempt's own pair cannot
-            -- help rank its own words (file order, no look-ahead).
-            Replay.learn(plugin, attempt)
-            if other then
-                Replay.learn(other, attempt)
             end
         end
     end
