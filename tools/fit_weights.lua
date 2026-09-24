@@ -333,17 +333,36 @@ function FitWeights.topOne(swipes, weights)
     return hits
 end
 
+-- Each named constant is weights[numerator] / weights[denominator] *
+-- scale. RARE_SHORT_COST is the odd one out: its frequency weight
+-- cancels, leaving spatial as its denominator.
+local CONSTANT_DEFS = {
+    { name = "SCORE_UNIT", numerator = 1, denominator = 2, scale = 1000 },
+    { name = "RARE_SHORT_COST", numerator = 3, denominator = 1, scale = 1 },
+    { name = "REPEAT_BONUS", numerator = 4, denominator = 2, scale = 1000 },
+    { name = "RANK_WEIGHT", numerator = 5, denominator = 2, scale = 1000 },
+    { name = "NEAR_RANK_COST", numerator = 6, denominator = 2,
+        scale = 1000 },
+}
+
+-- Reads off each constant's formula above, with weights supplying the
+-- denominators and numerators coming from whatever vector is passed in
+-- (weights themselves for the fitted constants, standard errors for
+-- their +/-). 0 when the numerator (feature 6, when it was dropped) is
+-- absent.
+local function namedConstants(numerators, weights)
+    local out = {}
+    for _, def in ipairs(CONSTANT_DEFS) do
+        local value = numerators[def.numerator]
+        out[def.name] = value
+            and value / weights[def.denominator] * def.scale or 0
+    end
+    return out
+end
+
 -- The fitted weights as the plugin's constants, frequency held at 1.
 function FitWeights.constants(weights)
-    local per_freq = 1000 / weights[2]
-    local score_unit = weights[1] * per_freq
-    return {
-        SCORE_UNIT = score_unit,
-        RARE_SHORT_COST = weights[3] * per_freq / score_unit,
-        REPEAT_BONUS = weights[4] * per_freq,
-        RANK_WEIGHT = weights[5] * per_freq,
-        NEAR_RANK_COST = weights[6] and weights[6] * per_freq or 0,
-    }
+    return namedConstants(weights, weights)
 end
 
 -- Copies swipes with feature 6 dropped, to fit and score without it.
@@ -437,35 +456,31 @@ local function main(args)
     local weights = FitWeights.fit(all, start)
     local se = FitWeights.standardErrors(all, weights)
     print("\nWeights fitted on every session (frequency held at 1;"
-        .. " ± is 1.96 SE, ignoring the frequency weight's own"
-        .. " uncertainty):")
+        .. " ± is 1.96 SE, holding the named weight fixed at its"
+        .. " point estimate):")
     local constants = FitWeights.constants(weights)
-    -- Each constant's SE is its weight's SE run through the same scale
-    -- factor as the constant itself; the frequency weight's own SE is
-    -- not propagated.
-    local per_freq = 1000 / weights[2]
-    local score_unit = weights[1] * per_freq
-    local se_constants = {
-        SCORE_UNIT = se[1] * per_freq,
-        RARE_SHORT_COST = se[3] * per_freq / score_unit,
-        REPEAT_BONUS = se[4] * per_freq,
-        RANK_WEIGHT = se[5] * per_freq,
-        NEAR_RANK_COST = se[6] and se[6] * per_freq or 0,
-    }
-    print(string.format("  SCORE_UNIT       %8.0f ± %-6.0f (now %d)",
-        constants.SCORE_UNIT, 1.96 * se_constants.SCORE_UNIT,
-        plugin.engine.scoring.SCORE_UNIT))
-    print(string.format("  RARE_SHORT_COST  %8.2f ± %-6.2f (now %d)",
-        constants.RARE_SHORT_COST, 1.96 * se_constants.RARE_SHORT_COST,
+    -- Each constant's SE is its own numerator weight's SE, run through
+    -- the same formula as the constant; only the named denominator
+    -- weight's uncertainty goes unreported.
+    local se_constants = namedConstants(se, weights)
+    print(string.format("  SCORE_UNIT       %8.0f ± %-6.0f (now %d;"
+        .. " frequency held fixed)", constants.SCORE_UNIT,
+        1.96 * se_constants.SCORE_UNIT, plugin.engine.scoring.SCORE_UNIT))
+    print(string.format("  RARE_SHORT_COST  %8.2f ± %-6.2f (now %d;"
+        .. " spatial held fixed)", constants.RARE_SHORT_COST,
+        1.96 * se_constants.RARE_SHORT_COST,
         plugin.engine.scoring.RARE_SHORT_COST))
-    print(string.format("  REPEAT_BONUS     %8.0f ± %-6.0f (now %d)",
-        constants.REPEAT_BONUS, 1.96 * se_constants.REPEAT_BONUS,
+    print(string.format("  REPEAT_BONUS     %8.0f ± %-6.0f (now %d;"
+        .. " frequency held fixed)", constants.REPEAT_BONUS,
+        1.96 * se_constants.REPEAT_BONUS,
         plugin.engine.scoring.REPEAT_BONUS))
-    print(string.format("  RANK_WEIGHT      %8.0f ± %-6.0f (now %d)",
-        constants.RANK_WEIGHT, 1.96 * se_constants.RANK_WEIGHT,
+    print(string.format("  RANK_WEIGHT      %8.0f ± %-6.0f (now %d;"
+        .. " frequency held fixed)", constants.RANK_WEIGHT,
+        1.96 * se_constants.RANK_WEIGHT,
         plugin.engine.geometry_reranker.RANK_WEIGHT))
-    print(string.format("  NEAR_RANK_COST   %8.0f ± %-6.0f (now %d)",
-        constants.NEAR_RANK_COST, 1.96 * se_constants.NEAR_RANK_COST, 0))
+    print(string.format("  NEAR_RANK_COST   %8.0f ± %-6.0f (now %d;"
+        .. " frequency held fixed)", constants.NEAR_RANK_COST,
+        1.96 * se_constants.NEAR_RANK_COST, 0))
     print(string.format("  negative log-likelihood %.1f (current weights"
         .. " %.1f)", FitWeights.loss(all, weights, 0),
         FitWeights.loss(all, start, 0)))
