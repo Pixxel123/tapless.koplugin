@@ -10,11 +10,14 @@ local Scoring = {
     -- Words the user has kept: the bonus per doubling of their uses, its
     -- cap, and the frequency it may lift a word to. Common words already
     -- sit above the ceiling, so only rarer words gain on their neighbours.
-    -- A word kept KNOWN_USES times is no longer a rare fragment.
+    -- A word kept KNOWN_USES times is no longer a rare fragment. It takes
+    -- more uses than the bonus does: a wrong word left in the text is kept
+    -- again each time the same slip is made, and at two or three uses a
+    -- rare fragment such as "thr" took the place of "the".
     USAGE_UNIT = 500,
     USAGE_CAP = 2000,
-    USAGE_CEILING = 6000,
-    KNOWN_USES = 2,
+    USAGE_CEILING = 5500,
+    KNOWN_USES = 4,
     -- Cost of a word whose first letter is not the key the swipe started
     -- on, when the trace crosses that letter later.
     FIRST_LETTER_COST = 6,

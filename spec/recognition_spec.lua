@@ -214,7 +214,7 @@ local function pinUsage(scoring)
     scoring.USAGE_UNIT = 500
     scoring.USAGE_CAP = 1500
     scoring.USAGE_CEILING = 6000
-    scoring.KNOWN_USES = 2
+    scoring.KNOWN_USES = 3
     return scoring
 end
 
@@ -251,7 +251,8 @@ it("takes the usage bonus off a word's ranked score", function()
     T.eq(ranked(nil), ranked(0), "no count is no uses")
 end)
 
-it("stops charging a word kept twice as a rare short fragment", function()
+it("stops charging a word kept often enough as a rare short fragment",
+        function()
     local scoring = pinUsage(T.load("scoring"):new(T.normalization))
     local short = ("bcqxzv"):sub(1, scoring.RARE_SHORT_LENGTH)
     local freq = scoring.RARE_SHORT_FREQ - 100
@@ -264,8 +265,11 @@ it("stops charging a word kept twice as a rare short fragment", function()
     T.truthy(math.abs(ranked(0) - ranked(1)) < 1e-6,
         "one keep still pays the cost")
     T.truthy(math.abs((ranked(0) - ranked(2))
-        - (cost + scoring:usageBonus(freq, 2))) < 1e-6,
-        "two keeps drop the cost and earn the bonus")
+        - scoring:usageBonus(freq, 2)) < 1e-6,
+        "two keeps earn the bonus but still pay the cost")
+    T.truthy(math.abs((ranked(0) - ranked(3))
+        - (cost + scoring:usageBonus(freq, 3))) < 1e-6,
+        "enough keeps drop the cost and earn the bonus")
 end)
 
 it("puts a word the user keeps ahead of a slightly better fit", function()
