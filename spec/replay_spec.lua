@@ -122,6 +122,55 @@ it("learns the intended word after its swipe", function()
     Replay.learn(plugin, attempt)  -- no context model: no error
 end)
 
+it("gives a plugin a usage model only when its code has one", function()
+    T.eq(Replay.loadPlugin(T.plugin_dir).usage_model, nil)
+    T.truthy(Replay.loadPlugin(T.plugin_dir, { usage = true }).usage_model)
+    -- A plugin from before usage learning can neither learn nor use counts.
+    local dir = os.tmpname()
+    os.remove(dir)
+    os.execute('cp -r "' .. T.plugin_dir .. '" "' .. dir .. '"')
+    os.remove(dir .. "/usage_model.lua")
+    local old = Replay.loadPlugin(dir, { usage = true })
+    local first = Replay.run(old, attemptFor("water")).words[1]
+    os.execute('rm -rf "' .. dir .. '"')
+    T.eq(old.usage_model, nil)
+    T.eq(first, "water")
+end)
+
+it("lets the words a user keeps change the first choice", function()
+    local seeded = Replay.loadPlugin(T.plugin_dir,
+        { usage = true, usage_counts = { wafer = 255 } })
+    local scoring = seeded.engine.scoring
+    scoring.USAGE_UNIT, scoring.USAGE_CAP, scoring.USAGE_CEILING = 1e7, 1e7, 1e7
+    T.eq(Replay.run(seeded, attemptFor("water")).words[1], "wafer")
+    local unseeded = Replay.loadPlugin(T.plugin_dir, { usage = true })
+    T.eq(Replay.run(unseeded, attemptFor("water")).words[1], "water")
+end)
+
+it("learns the uses of the kept word after its swipe", function()
+    local with_usage = Replay.loadPlugin(T.plugin_dir, { usage = true })
+    local picked = attemptFor("water")
+    picked.picked = "wafer"
+    Replay.learn(with_usage, picked)
+    T.eq(with_usage.usage_model:uses("wafer"), 2)
+    Replay.learn(with_usage, attemptFor("water"))
+    T.eq(with_usage.usage_model:uses("water"), 1)
+    Replay.learn(plugin, picked)  -- no usage model: no error
+end)
+
+it("starts learning again from the seeded counts", function()
+    local both = Replay.loadPlugin(T.plugin_dir, { context = true,
+        usage = true, usage_counts = { wafer = 3 } })
+    both.usage_model:learn("wafer", 5)
+    both.usage_model:learn("water", 1)
+    both.context_model:learn("the", "water")
+    both:resetLearning()
+    T.eq(both.usage_model:uses("wafer"), 3, "the seed")
+    T.eq(both.usage_model:uses("water"), 0)
+    T.eq(both.context_model:bonus("the", "water"), 0)
+    plugin:resetLearning()  -- no models: no error
+end)
+
 it("learns the word the device kept, not the intended one", function()
     local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
     local attempt = attemptFor("water")

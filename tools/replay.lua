@@ -2,7 +2,8 @@
 -- directory's recognition code and reports accuracy.
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
---     [--context] [--context-settings FILE] [--misses] [--losses]
+--     [--context] [--context-settings FILE] [--usage]
+--     [--usage-settings FILE] [--per-session] [--misses] [--losses]
 --     [--keep-suspect] SESSION.jsonl...
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
@@ -33,8 +34,10 @@ package.preload["datastorage"] = package.preload["datastorage"] or
 
 local Replay = {}
 
--- The device settings key ContextModel's counts are saved under.
+-- The device settings keys ContextModel's and UsageModel's counts are saved
+-- under.
 local CONTEXT_SETTING_KEY = "keyboard_swype_mvp_context_counts"
+local USAGE_SETTING_KEY = "tapless_word_usage"
 
 local function deepCopy(value)
     if type(value) ~= "table" then
@@ -67,7 +70,11 @@ end
 -- if given, wires up a personal dictionary read from that folder.
 -- options.context, if true, gives plugin.context_model: a real
 -- ContextModel over an in-memory settings object, seeded with a deep
--- copy of options.context_counts when given.
+-- copy of options.context_counts when given. options.usage does the same
+-- for plugin.usage_model, seeded from options.usage_counts, but only when
+-- the plugin directory has a usage model: an older one has none, and
+-- neither learns nor uses word counts. plugin:resetLearning() starts both
+-- models over from their seeds.
 function Replay.loadPlugin(plugin_dir, options)
     local function load(name)
         return dofile(plugin_dir .. "/" .. name .. ".lua")
@@ -110,39 +117,57 @@ function Replay.loadPlugin(plugin_dir, options)
     local personal_dictionary = options and options.personal_dir
         and load("personal_dictionary"):new(normalization,
             load("dictionary_index"), options.personal_dir)
-    local context_model
-    if options and options.context then
+    local function newSettings(key, counts)
         local settings = {
             values = {},
-            readSetting = function(self, key, default)
-                local value = self.values[key]
+            readSetting = function(self, name, default)
+                local value = self.values[name]
                 if value == nil then return default end
                 return value
             end,
-            saveSetting = function(self, key, value)
-                self.values[key] = value
+            saveSetting = function(self, name, value)
+                self.values[name] = value
             end,
         }
-        if options.context_counts then
-            settings.values[CONTEXT_SETTING_KEY] =
-                deepCopy(options.context_counts)
+        if counts then
+            settings.values[key] = deepCopy(counts)
         end
-        context_model = load("context_model"):new(settings,
-            CONTEXT_SETTING_KEY)
+        return settings
     end
-    return {
+    local function newLearning()
+        local context_model, usage_model
+        if options and options.context then
+            context_model = load("context_model"):new(
+                newSettings(CONTEXT_SETTING_KEY, options.context_counts),
+                CONTEXT_SETTING_KEY)
+        end
+        local usage_file = options and options.usage
+            and io.open(plugin_dir .. "/usage_model.lua", "r")
+        if usage_file then
+            usage_file:close()
+            usage_model = load("usage_model"):new(
+                newSettings(USAGE_SETTING_KEY, options.usage_counts),
+                USAGE_SETTING_KEY)
+        end
+        return context_model, usage_model
+    end
+    local plugin = {
         dir = plugin_dir,
         manifest = manifest,
         normalization = normalization,
         geometry = load("keyboard_geometry"):new(normalization),
         trace_collector = load("trace_collector"),
         gesture_controller = load("gesture_controller"),
-        context_model = context_model,
         engine = load("recognition_engine"):new(store,
             load("scoring"):new(normalization),
             load("geometry_reranker"):new(),
             personal_dictionary),
     }
+    plugin.context_model, plugin.usage_model = newLearning()
+    function plugin:resetLearning()
+        self.context_model, self.usage_model = newLearning()
+    end
+    return plugin
 end
 
 -- Mirrors KOReader's Geom:contains (frontend/ui/geometry.lua): inclusive
@@ -270,6 +295,11 @@ function Replay.run(plugin, attempt)
             word)
         return plugin.context_model:bonus(previous_word, word)
     end or nil
+    -- word_uses, when plugin.usage_model exists (--usage), counts the
+    -- words kept so far this run, or seeded with --usage-settings.
+    local word_uses = plugin.usage_model and function(word)
+        return plugin.usage_model:uses(word)
+    end or nil
     local candidates = plugin.engine:pickCandidates{
         signature = signature,
         limit = 4,
@@ -285,6 +315,7 @@ function Replay.run(plugin, attempt)
         end,
         normalization_profile = profile,
         context_bonus = context_bonus,
+        word_uses = word_uses,
     }
     local words, personal, bonus = {}, {}, {}
     for index, candidate in ipairs(candidates) do
@@ -629,6 +660,7 @@ local function main(args)
     local keep_suspect = false
     local personal_dir
     local use_context, context_settings = false, nil
+    local use_usage, usage_settings, per_session = false, nil, false
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -646,6 +678,13 @@ local function main(args)
         elseif value == "--context-settings" then
             index = index + 1
             context_settings = args[index]
+        elseif value == "--usage" then
+            use_usage = true
+        elseif value == "--usage-settings" then
+            index = index + 1
+            usage_settings = args[index]
+        elseif value == "--per-session" then
+            per_session = true
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -660,8 +699,9 @@ local function main(args)
     if #paths == 0 then
         io.stderr:write("usage: luajit tools/replay.lua [--plugin DIR] "
             .. "[--compare DIR] [--personal DIR] [--context] "
-            .. "[--context-settings FILE] [--misses] [--losses] "
-            .. "[--keep-suspect] SESSION.jsonl...\n")
+            .. "[--context-settings FILE] [--usage] "
+            .. "[--usage-settings FILE] [--per-session] [--misses] "
+            .. "[--losses] [--keep-suspect] SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -680,8 +720,11 @@ local function main(args)
     end
     local context_counts = context_settings
         and dofile(context_settings)[CONTEXT_SETTING_KEY]
+    local usage_counts = usage_settings
+        and dofile(usage_settings)[USAGE_SETTING_KEY]
     local options = { personal_dir = personal_dir, context = use_context,
-        context_counts = context_counts }
+        context_counts = context_counts, usage = use_usage,
+        usage_counts = usage_counts }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
@@ -689,7 +732,17 @@ local function main(args)
     local personal_first, personal_first_before = 0, 0
     local context_first, context_first_before = 0, 0
     local loss_stages = show_losses and {} or nil
+    local session
     for _, attempt in ipairs(attempts) do
+        -- Sentences repeat from one session to the next, so what is learned
+        -- in one would flatter the next: --per-session starts each over.
+        if per_session and session and attempt.session ~= session then
+            plugin:resetLearning()
+            if other then
+                other:resetLearning()
+            end
+        end
+        session = attempt.session
         local result, loss_stage, before =
             Replay.replayAttempt(plugin, other, attempt, show_losses)
         if show_losses then
