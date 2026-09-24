@@ -25,7 +25,9 @@ local FitWeights = {
 }
 
 -- The current constants in the same units: ranked_score / 1000 is
---   3 * spatial - freq / 1000 + 12 * rare - 4.5 * repeat + 1.8 * geometry
+--   (SCORE_UNIT / 1000) * spatial - freq / 1000
+--   + (RARE_SHORT_COST * SCORE_UNIT / 1000) * rare
+--   - (REPEAT_BONUS / 1000) * repeat + (RANK_WEIGHT / 1000) * geometry
 -- A borrowed letter is not its own feature today: it just adds
 -- NEAR_KEY_COST to the spatial score, so its starting weight is 0.
 function FitWeights.currentWeights(scoring, reranker)
@@ -466,7 +468,7 @@ local function main(args)
     print(string.format("  SCORE_UNIT       %8.0f ± %-6.0f (now %d;"
         .. " frequency held fixed)", constants.SCORE_UNIT,
         1.96 * se_constants.SCORE_UNIT, plugin.engine.scoring.SCORE_UNIT))
-    print(string.format("  RARE_SHORT_COST  %8.2f ± %-6.2f (now %d;"
+    print(string.format("  RARE_SHORT_COST  %8.2f ± %-6.2f (now %.2f;"
         .. " spatial held fixed)", constants.RARE_SHORT_COST,
         1.96 * se_constants.RARE_SHORT_COST,
         plugin.engine.scoring.RARE_SHORT_COST))

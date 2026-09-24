@@ -148,6 +148,8 @@ end
 -- Mirrors KOReader's Geom:contains (frontend/ui/geometry.lua): inclusive
 -- on every edge, so a point on a shared boundary is inside both keys and
 -- keyAt's layout-order scan picks whichever key comes first.
+-- `pos.w or 0` stands in for Geom's class defaults (w = h = 0) on the
+-- bare {x, y} points geom() builds.
 local function contains(self, pos)
     local w, h = pos.w or 0, pos.h or 0
     return self.x <= pos.x and self.y <= pos.y
@@ -185,8 +187,11 @@ end
 
 local function noop() end
 
--- Replays one recorded attempt. Returns { letters, words } or
--- { short = true, letters }.
+-- Replays one recorded attempt. Returns { letters, words, personal,
+-- bonus }; personal runs parallel to words, and bonus does too when
+-- plugin.context_model exists (empty otherwise). On a signature too
+-- short to look up, short = true and words, personal and bonus come
+-- back empty.
 function Replay.run(plugin, attempt)
     local layout = buildLayout(attempt.keys)
     local info = plugin.manifest(attempt.dictionary or "en") or {}
@@ -296,7 +301,10 @@ end
 
 -- Learns attempt's target as following its previous word, in
 -- plugin.context_model, when both the model and a previous word
--- exist. No-op otherwise.
+-- exist. No-op otherwise. Lowercases the target; the device instead
+-- learns the chosen candidate in its dictionary casing, so a
+-- capitalised dictionary word would get no bonus here (moot for now:
+-- session words are all lowercase).
 function Replay.learn(plugin, attempt)
     local previous_word = attempt.previous_word
     if plugin.context_model and previous_word and attempt.target then

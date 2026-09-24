@@ -191,8 +191,9 @@ it("ranks rare short words below words that fit as well", function()
         return score
     end
     -- A rare three-letter word pays extra; a rare longer word does not.
-    T.truthy(ranked("bcq", 2500) - ranked("bcq", 2700)
-        >= scoring.RARE_SHORT_COST * scoring.SCORE_UNIT)
+    T.truthy(math.abs((ranked("bcq", 2500) - ranked("bcq", 2700))
+        - (200 + scoring.RARE_SHORT_COST * scoring.SCORE_UNIT)) < 1e-6,
+        "rare short cost applied exactly")
     T.eq(ranked("bvcq", 2500) - ranked("bvcq", 2700), 200)
 end)
 
