@@ -8,6 +8,7 @@ local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
@@ -180,6 +181,7 @@ return loadModule("koreader_adapter"):new{
     overlap_group = OverlapGroup,
     virtual_key = VirtualKey,
     virtual_key_popup = VirtualKeyPopup,
+    line_widget = LineWidget,
     icon_dir = plugin_dir .. "/icons",
     ui_manager = UIManager,
     settings = G_reader_settings,

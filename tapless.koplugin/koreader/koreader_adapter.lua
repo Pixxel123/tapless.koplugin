@@ -283,7 +283,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
             handle.popup = adapter.virtual_key_popup:new{
                 parent_key = handle,
             }
-            keyboard:_swypePlacePopup(handle.popup, handle)
+            keyboard:_swypePlainPopup(handle.popup, handle)
             handle.callback = tap
             -- KOReader sets this when it nudges the popup off an edge, to
             -- skip the first lift; ours never opens under the finger.
@@ -306,13 +306,32 @@ function KoreaderAdapter:install(VirtualKeyboard)
         return handle
     end
 
-    -- Keeps KOReader's popup as it is drawn, but shows it just above the
-    -- keyboard, flush with its edge at the handle's end. Its keys are all
-    -- white: none sits under the finger for KOReader to shade. A swipe
-    -- on one of them must not fall back to typing the key either.
-    function VirtualKeyboard:_swypePlacePopup(popup, handle)
-        for _, key in ipairs(popup.layout[1]) do
-            key[1].background = adapter.blitbuffer.COLOR_WHITE
+    -- Redraws KOReader's popup as one white row with thin grey lines
+    -- between the keys, just above the keyboard and flush with its edge
+    -- at the handle's end. A swipe on one of its keys must not fall back
+    -- to typing the key either.
+    function VirtualKeyboard:_swypePlainPopup(popup, handle)
+        local white = adapter.blitbuffer.COLOR_WHITE
+        local position = popup[1]
+        local frame = position[1]
+        local centre = frame[1]
+        local rows = centre[1]
+        local row = rows[1]
+        local keys = popup.layout[1]
+        local line_w = adapter.size.line.medium
+        for index = #row, 1, -1 do
+            row[index] = nil
+        end
+        for index, key in ipairs(keys) do
+            if index > 1 then
+                table.insert(row, adapter.line_widget:new{
+                    background = adapter.blitbuffer.COLOR_LIGHT_GRAY,
+                    dimen = adapter.geometry:new{
+                        w = line_w, h = key.height },
+                })
+            end
+            table.insert(row, key)
+            key[1].background = white
             -- KOReader builds icon keys without alpha, which paints our
             -- transparent SVGs as black squares.
             if key.icon and key[1][1][1] then
@@ -326,11 +345,19 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 key.onPanReleaseKey = key._onPanReleaseKey
             end
         end
+        row:resetLayout()
+        rows:resetLayout()
 
-        local position = popup[1]
-        local frame = position[1]
-        local w, h = frame.dimen.w, frame.dimen.h
+        frame.background = white
+        frame.padding = 0
+        centre.dimen.w = #keys * handle.width + (#keys - 1) * line_w
+        centre.dimen.h = handle.height
         local border = frame.bordersize
+        local w = centre.dimen.w + 2 * border
+        local h = centre.dimen.h + 2 * border
+        -- popup.dimen is this same table, which its refreshes use.
+        frame.dimen.w, frame.dimen.h = w, h
+
         -- self.dimen is the keys frame, placed when it was painted.
         local board, key_box = self.dimen, handle[1].dimen
         -- Flush with the keyboard's edge at the handle's end.
