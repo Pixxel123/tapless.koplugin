@@ -344,10 +344,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
             end
             table.insert(row, key)
             key[1].background = white
-            -- KOReader builds icon keys without alpha, which paints our
-            -- transparent SVGs as black squares.
+            -- KOReader builds icon keys as plain images: without alpha,
+            -- which paints our transparent SVGs as black squares, and
+            -- kept in their original colours in night mode, which leaves
+            -- them black on the inverted keys.
             if key.icon and key[1][1][1] then
                 key[1][1][1].alpha = true
+                key[1][1][1].original_in_nightmode = false
             end
             key.swipe_callback = nil
             -- KOReader skips the first lift on the centre key, which it
