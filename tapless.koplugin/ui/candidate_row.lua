@@ -15,15 +15,33 @@ end
 
 function CandidateRow:create(options)
     local slot_count = options.slot_count or 4
+    local handle = options.handle
     local horizontal_group = options.HorizontalGroup:new{
         allow_mirroring = false,
     }
     local layout = {}
     local keys = {}
     local candidates = options.candidates or {}
+
+    -- Between slots: a thin grey line, or the plain key gap.
+    local gap_width = options.separator and options.separator_width
+        or options.key_padding
+    local function gap()
+        if options.separator then
+            return options.separator(options.height)
+        end
+        return options.horizontal_padding
+    end
+    local gaps = slot_count - 1 + (handle and 1 or 0)
     local candidate_width = math.floor(
-        (options.width - (slot_count + 1) * options.key_padding
-            - 2 * options.padding) / slot_count)
+        (options.width - 2 * options.padding - 2 * options.key_padding
+            - gaps * gap_width - (handle and handle.width or 0))
+        / slot_count)
+
+    if handle and handle.side == "left" then
+        table.insert(horizontal_group, handle.widget)
+        table.insert(horizontal_group, gap())
+    end
 
     for index = 1, slot_count do
         local word = slotText(index, candidates, options.personal_offer)
@@ -36,6 +54,8 @@ function CandidateRow:create(options)
             width = candidate_width,
             height = options.height,
             is_swype_candidate = true,
+            -- The top suggestion is bold.
+            tapless_bold = index == 1 or nil,
         }
         virtual_key.swipe_callback = nil
         -- Holding a suggestion offers to block it; the lift that ends the
@@ -67,8 +87,13 @@ function CandidateRow:create(options)
         table.insert(horizontal_group, virtual_key)
         table.insert(layout, virtual_key)
         if index ~= slot_count then
-            table.insert(horizontal_group, options.horizontal_padding)
+            table.insert(horizontal_group, gap())
         end
+    end
+
+    if handle and handle.side == "right" then
+        table.insert(horizontal_group, gap())
+        table.insert(horizontal_group, handle.widget)
     end
 
     return {

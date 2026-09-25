@@ -13,9 +13,20 @@ local function rect(x, w)
     }
 end
 
+-- The four dependencies KeyboardUI needs to draw the thin separator line.
+local function lineDeps()
+    return {
+        line_widget = { new = function(_, o) return o end },
+        geometry = { new = function(_, o) return o end },
+        blitbuffer = { COLOR_LIGHT_GRAY = "grey" },
+        size = { line = { medium = 2 } },
+    }
+end
+
 local function setup(changes)
     local dirty = {}
     local keys = { { { dimen = rect(0, 50) } }, { { dimen = rect(50, 50) } } }
+    local deps = lineDeps()
     local ui = T.load("keyboard_ui"):new{
         candidate_row = {
             refresh = function() return table.remove(changes, 1) end,
@@ -30,6 +41,10 @@ local function setup(changes)
         },
         gesture_range = {},
         screen = {},
+        line_widget = deps.line_widget,
+        geometry = deps.geometry,
+        blitbuffer = deps.blitbuffer,
+        size = deps.size,
     }
     local session = {
         getCandidates = function() end,
@@ -44,6 +59,7 @@ end
 
 it("registers a screen-wide hold_release range for the switch lift",
         function()
+    local deps = lineDeps()
     local ui = T.load("keyboard_ui"):new{
         candidate_row = {},
         confirm_box = {},
@@ -52,6 +68,10 @@ it("registers a screen-wide hold_release range for the switch lift",
         ui_manager = {},
         gesture_range = T.gesture_range,
         screen = { getSize = function() return "screen" end },
+        line_widget = deps.line_widget,
+        geometry = deps.geometry,
+        blitbuffer = deps.blitbuffer,
+        size = deps.size,
     }
     local keyboard = { ges_events = {}, dimen = {} }
     ui:registerGestureRanges(keyboard)
@@ -77,4 +97,64 @@ it("cleans the suggestion row with a flash every few changes", function()
     T.eq(dirty[1][1], "flashui")
     T.eq(dirty[1][2].x, 0)
     T.eq(dirty[1][2].w, 100, "whole row")
+end)
+
+it("gives createCandidateRow a light-grey separator and the handle",
+        function()
+    local received
+    local deps = lineDeps()
+    local ui = T.load("keyboard_ui"):new{
+        candidate_row = {
+            create = function(_, options) received = options end,
+        },
+        confirm_box = {},
+        horizontal_group = {},
+        virtual_key = {},
+        ui_manager = {},
+        gesture_range = {},
+        screen = {},
+        line_widget = deps.line_widget,
+        geometry = deps.geometry,
+        blitbuffer = deps.blitbuffer,
+        size = deps.size,
+    }
+    local keyboard = {
+        swype_mvp_session = {
+            getCandidates = function() end,
+            getPersonalOffer = function() end,
+        },
+    }
+    local handle = { widget = {}, width = 40, side = "left" }
+    ui:createCandidateRow(keyboard, {
+        width = 400, height = 40, key_padding = 2, padding = 2,
+        horizontal_padding = {}, handle = handle,
+    })
+
+    T.eq(received.separator_width, 2)
+    local separator = received.separator(40)
+    T.eq(separator.background, "grey")
+    T.eq(separator.dimen.w, 2)
+    T.eq(separator.dimen.h, 40)
+    T.eq(received.handle, handle)
+end)
+
+it("hairline returns a light-grey line of the given size", function()
+    local deps = lineDeps()
+    local ui = T.load("keyboard_ui"):new{
+        candidate_row = {},
+        confirm_box = {},
+        horizontal_group = {},
+        virtual_key = {},
+        ui_manager = {},
+        gesture_range = {},
+        screen = {},
+        line_widget = deps.line_widget,
+        geometry = deps.geometry,
+        blitbuffer = deps.blitbuffer,
+        size = deps.size,
+    }
+    local line = ui:hairline(300, 4)
+    T.eq(line.dimen.w, 300)
+    T.eq(line.dimen.h, 4)
+    T.eq(line.background, "grey")
 end)
