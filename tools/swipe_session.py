@@ -21,17 +21,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 PLUGIN = os.path.join(ROOT, "tapless.koplugin")
 WORD = re.compile(r"^[a-z]{2,10}$")
+# Long words, for testing how the keyboard finds them.
+LONG_WORD = re.compile(r"^[a-z]{8,14}$")
 
 
-def word_prompts(dictionary, count, rng):
+def word_prompts(dictionary, count, rng, pattern=WORD):
     path = os.path.join(PLUGIN, "dictionaries", dictionary,
                         "words.buckets.tsv")
     freq = {}
     with open(path, encoding="utf-8") as tsv:
         for line in tsv:
             fields = line.rstrip("\n").split("\t")
-            if len(fields) >= 3 and WORD.match(fields[0]):
-                freq[fields[0]] = max(freq.get(fields[0], 0), int(fields[2]))
+            # The word as typed, not the letters it is filed under: "don't"
+            # is filed under "dont", which is no word to prompt.
+            if len(fields) >= 3 and pattern.match(fields[1]):
+                freq[fields[1]] = max(freq.get(fields[1], 0), int(fields[2]))
     ranked = sorted(freq, key=lambda word: -freq[word])
     bands = [ranked[:1000], ranked[1000:5000], ranked[5000:20000]]
     bands = [band for band in bands if band]
@@ -209,6 +213,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sentences", action="store_true",
                         help="prompt short sentences instead of words")
+    parser.add_argument("--long", action="store_true",
+                        help="prompt words of 8 to 14 letters")
+    parser.add_argument("--no-replay", action="store_true",
+                        help="save the session without replaying it")
     parser.add_argument("--count", type=int,
                         help="words (default 50) or sentences (default 20)")
     parser.add_argument("--seed", type=int, help="repeatable prompts")
@@ -220,11 +228,14 @@ def main():
                         help="print the prompts and exit")
     args = parser.parse_args()
 
+    if args.long and args.sentences:
+        parser.error("--long prompts words, not sentences")
     rng = random.Random(args.seed)
     mode = "sentences" if args.sentences else "words"
     count = args.count or (20 if args.sentences else 50)
     prompts = (sentence_prompts(count, rng) if args.sentences
-               else word_prompts(args.dictionary, count, rng))
+               else word_prompts(args.dictionary, count, rng,
+                                 LONG_WORD if args.long else WORD))
     if args.print_prompts:
         print("\n".join(prompts))
         return
@@ -239,6 +250,8 @@ def main():
     log = collect(kindle)
     if log:
         print(f"Saved {os.path.relpath(log, ROOT)}\n")
+        if args.no_replay:
+            return
         command = ["luajit", os.path.join(TOOLS, "replay.lua"), "--misses"]
         settings = fetch_settings(kindle)
         if settings:
