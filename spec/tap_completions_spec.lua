@@ -254,6 +254,28 @@ it("does not learn a typo or a swiped word as a tapped one", function()
     T.eq(state.uses.world, nil, "a swiped word is learned when committed")
 end)
 
+it("does not learn part of a word before an apostrophe or hyphen",
+        function()
+    WORDS[#WORDS + 1] = "don" -- a word too, so only the apostrophe stops it
+    local _, _, state = setup()
+    table.remove(WORDS)
+    state.type("d", "o", "n", "'", "t", " ")
+    T.eq(state.uses.don, nil)
+    T.eq(state.uses.t, nil)
+    state.type("h", "e", "l", "l", "o", "-")
+    T.eq(state.uses.hello, nil)
+end)
+
+it("leaves input method layouts alone", function()
+    local _, keyboard, state = setup()
+    keyboard.uwrap_func = noop -- set by KOReader for IME layouts
+    state.type("h", "e")
+    state.pause()
+    T.eq(state.row(), "", "no completions")
+    state.type("l", "l", "o", " ")
+    T.eq(state.uses.hello, nil, "not learned")
+end)
+
 it("offers no completions with the option off", function()
     local _, _, state = setup({ off = true })
     state.type("t", "h")

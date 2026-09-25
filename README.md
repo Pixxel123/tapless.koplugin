@@ -213,23 +213,27 @@ words still shows when nothing matches. It can be turned off under
 `Tools → Tapless → Suggest words while typing`.
 
 The most common 256 words for each first letter are always searched.
-From three letters in, the rest of the dictionary is searched too. Those
-word lists are read in the background while you type the first letters,
-one at a time, so typing never waits for the disk. The first time you
-start a word with a letter they may not all be ready yet, so rarer words
-can be missing from the row for that one word.
+From three letters in, if they don't fill the row, the rest of the
+dictionary is searched too. Those word lists are read in the background
+while you type the first letters, one at a time, so typing never waits
+for the disk. The first time you start a word with a letter they may not
+all be ready yet, so rarer words can be missing from the row for that one
+word.
 
-Typing the words from the recorded sessions letter by letter:
+Typing the words from the recorded sessions and pausing once, after the
+second or third letter:
 
 | | Sentences (553 words) | Random words (212) |
 |---|---|---|
-| Word in the row before it's fully typed | 97% | 91% |
-| Word first in the row before it's fully typed | 47% | 25% |
-| Keystrokes saved, picking it as soon as it shows | 46% | 39% |
+| Word in the row after 2 letters | 70% | 17% |
+| Word first in the row after 2 letters | 49% | 4% |
+| Word in the row after 3 letters | 86% | 61% |
+| Word first in the row after 3 letters | 64% | 27% |
 
-Word pairs lift the "first in the row" figure on sentences from 35% to
-45%, and searching past the most common words takes the random words from
-64% in the row to 91%.
+Picking the word at that one pause saves about a quarter of the
+keystrokes in the sentences. Word pairs are why the right word is so
+often first in sentences, and the wider search after three letters is
+what finds the less common random words.
 
 **Second finger.** A thumb resting on the edge of the screen mid-swipe was
 paired with the swiping finger into a two-finger gesture, and the swipe

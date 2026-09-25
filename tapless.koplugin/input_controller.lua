@@ -206,7 +206,13 @@ function InputController:wordUses(word)
     return self.usage_model and self.usage_model:uses(word) or 0
 end
 
-function InputController:_completionsEnabled()
+-- Completions and learning tapped words are for alphabetic layouts: on
+-- input method layouts (Chinese, Japanese, Korean, Vietnamese) the letters
+-- tapped are still being composed into other characters.
+function InputController:_completionsEnabled(keyboard)
+    if keyboard.uwrap_func then
+        return false
+    end
     local settings = self.settings
     if settings.nilOrTrue then
         return settings:nilOrTrue(self.COMPLETION_SETTING)
@@ -293,7 +299,8 @@ end
 -- Shows words completing the word being tapped out; false when there are
 -- none to show.
 function InputController:_showCompletions(keyboard)
-    if not self:_completionsEnabled() or not keyboard._swypeCompleteWord then
+    if not self:_completionsEnabled(keyboard)
+            or not keyboard._swypeCompleteWord then
         return false
     end
     local typed, previous_word = self:_wordAtCursor(keyboard)
@@ -350,7 +357,8 @@ end
 function InputController:_learnTappedWord(keyboard)
     local personal = self.personal_dictionary
     local store = self.dictionary_store
-    if not (personal.prepareWord and store.containsWord) then
+    if keyboard.uwrap_func
+            or not (personal.prepareWord and store.containsWord) then
         return
     end
     local typed, previous_word = self:_wordAtCursor(keyboard)
@@ -374,7 +382,7 @@ end
 function InputController:_warmCompletionLists(keyboard, first)
     local store = self.dictionary_store
     if not (first and store.isBucketLoaded and store.loadBucket
-            and self:_completionsEnabled()) then
+            and self:_completionsEnabled(keyboard)) then
         return
     end
     keyboard.swype_mvp_completion_warm =
@@ -690,11 +698,14 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
             or key:match("^%d$")) then
         keyboard.swype_mvp_last_letter_tap = self.time.now()
     end
-    -- A space or punctuation ends a word tapped out letter by letter.
+    -- A space or punctuation ends a word tapped out letter by letter. An
+    -- apostrophe or hyphen ends only part of one ("don't", "well-known"),
+    -- which is not learned.
     local first_char = self.normalization:splitChars(key or "")[1]
     if keyboard.swype_mvp_tapped_word and first_char
             and not self.normalization:normalizeChar(first_char, profile) then
-        if first_char:match("^[%s%p]$") then
+        if first_char:match("^[%s%p]$") and first_char ~= "'"
+                and first_char ~= "-" then
             self:_learnTappedWord(keyboard)
         end
         keyboard.swype_mvp_tapped_word = false
