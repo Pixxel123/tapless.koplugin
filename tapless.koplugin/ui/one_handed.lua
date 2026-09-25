@@ -14,9 +14,8 @@ local OneHanded = {
     -- Of the screen height, so a dialog keeps room above in landscape.
     MAX_HEIGHT_SHARE = 0.55,
     SNAP = 3,
-    BUTTON = 19,
     -- Shown in the corner of the globe key, whose hold switches the mode.
-    HINT = "⇲",
+    HINT = "◨",
 }
 OneHanded.__index = OneHanded
 
@@ -242,31 +241,21 @@ function OneHanded.reset(block, screen)
     return OneHanded.toEdge(fresh, screen, nearer)
 end
 
--- The keys block and the two strips beside it in pixels, for a keyboard
--- whose inner area starts inset px from the screen's left edge and is
--- inner_w px wide. The side panel takes the wider strip.
-function OneHanded.layout(block, screen, inset, inner_w)
-    local keys_w = math.min(OneHanded.toPx(block.width, screen), inner_w)
-    local before = clamp(OneHanded.toPx(block.left, screen) - inset,
-        0, inner_w - keys_w)
-    local after = inner_w - keys_w - before
-    local panel_first = before >= after
+-- The keys frame in pixels: its left edge and width, the width inside
+-- its border and padding (inset each side), the room after it, and the
+-- side of it with more room, where the handle goes.
+function OneHanded.layout(block, screen, inset)
+    local frame_w = math.min(OneHanded.toPx(block.width, screen), screen.w)
+    local frame_x = clamp(OneHanded.toPx(block.left, screen),
+        0, screen.w - frame_w)
+    local after = screen.w - frame_x - frame_w
     return {
-        keys_w = keys_w,
-        before = before,
+        frame_x = frame_x,
+        frame_w = frame_w,
+        inner_w = frame_w - 2 * inset,
         after = after,
-        panel_w = panel_first and before or after,
-        panel_side = panel_first and "left" or "right",
+        handle_side = frame_x >= after and "left" or "right",
     }
-end
-
--- The side of a square panel button: 19 mm, or less when the strip or the
--- keyboard's inner height can't hold three with key padding between.
-function OneHanded.buttonSize(screen, strip_w, inner_h, key_padding)
-    return math.max(1, math.floor(math.min(
-        OneHanded.toPx(OneHanded.BUTTON, screen),
-        strip_w,
-        (inner_h - 2 * key_padding) / 3)))
 end
 
 return OneHanded
