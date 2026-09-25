@@ -30,7 +30,6 @@ local specs = {
     "one_handed_spec",
     "icons_spec",
     "panel_button_spec",
-    "side_panel_spec",
     "resize_frame_spec",
 }
 

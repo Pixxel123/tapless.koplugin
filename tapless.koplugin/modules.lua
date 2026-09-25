@@ -48,6 +48,5 @@ return {
     trace_renderer = "ui/trace_renderer.lua",
     one_handed = "ui/one_handed.lua",
     panel_button = "ui/panel_button.lua",
-    side_panel = "ui/side_panel.lua",
     resize_frame = "ui/resize_frame.lua",
 }

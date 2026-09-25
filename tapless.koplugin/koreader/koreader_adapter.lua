@@ -35,7 +35,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
         adapter.key_adapter:ensureInstalled()
         self:free()
         self.layout = {}
-        self.swype_mvp_panel_buttons = nil
+        self.swype_mvp_handle = nil
         local row_count = #self.KEYS + 1
         local screen = self:_swypeScreen()
         -- One-handed, the keys block has its own place and size; while
@@ -51,14 +51,14 @@ function KoreaderAdapter:install(VirtualKeyboard)
             or self:_swypeNormalHeight()
         local border = adapter.size.border.default
         local inset = border + self.padding
-        local inner_w = self.width - 2 * inset
-        local inner_h = self.height - 2 * inset
         local area = block
-            and adapter.one_handed.layout(block, screen, inset, inner_w)
-        -- The width key sizes are worked out from: the whole keyboard, as
-        -- before, or just enough for the keys block.
+            and adapter.one_handed.layout(block, screen, inset)
+        -- One-handed, only the keys frame is drawn: area.frame_w wide, at
+        -- area.frame_x. The page shows beside it.
+        local inner_w = area and area.inner_w or self.width - 2 * inset
+        local inner_h = self.height - 2 * inset
         local keys_width = area
-            and area.keys_w + 2 * self.padding + 2 * self.key_padding
+            and inner_w + 2 * self.padding + 2 * self.key_padding
             or self.width
         local base_key_width = math.floor((keys_width
             - (#self.KEYS[1] + 1) * self.key_padding - 2 * self.padding)
@@ -75,17 +75,24 @@ function KoreaderAdapter:install(VirtualKeyboard)
         local vertical_group = adapter.vertical_group:new{
             allow_mirroring = false,
         }
+        local handle = area and self:_swypeHandle(base_key_width,
+            base_key_height, block, screen)
+        self.swype_mvp_handle = handle or nil
         local candidate_row = adapter.keyboard_ui:createCandidateRow(self, {
             width = keys_width,
             height = base_key_height,
             key_padding = self.key_padding,
             padding = self.padding,
             horizontal_padding = h_key_padding,
+            handle = handle and { widget = handle, width = base_key_width,
+                side = area.handle_side } or nil,
         })
         self.swype_mvp_candidate_keys = candidate_row.keys
         table.insert(vertical_group, candidate_row.widget)
         table.insert(self.layout, candidate_row.layout)
-        table.insert(vertical_group, v_key_padding)
+        table.insert(vertical_group, adapter.keyboard_ui:hairline(
+            keys_width - 2 * self.padding - 2 * self.key_padding,
+            self.key_padding))
 
         for row_index = 1, #self.KEYS do
             local horizontal_group = adapter.horizontal_group:new{
@@ -168,11 +175,6 @@ function KoreaderAdapter:install(VirtualKeyboard)
             end
         end
 
-        local content = vertical_group
-        if area then
-            content = self:_swypeOneHandedRow(vertical_group, area, block,
-                screen, inner_h)
-        end
         local keyboard_frame = adapter.frame_container:new{
             margin = 0,
             bordersize = border,
@@ -184,12 +186,20 @@ function KoreaderAdapter:install(VirtualKeyboard)
             allow_mirroring = false,
             adapter.center_container:new{
                 dimen = adapter.geometry:new{ w = inner_w, h = inner_h },
-                content,
+                vertical_group,
             },
         }
         local bottom_child = keyboard_frame
+        if area then
+            bottom_child = adapter.horizontal_group:new{
+                allow_mirroring = false,
+                adapter.horizontal_span:new{ width = area.frame_x },
+                keyboard_frame,
+                adapter.horizontal_span:new{ width = area.after },
+            }
+        end
         if resize then
-            bottom_child = self:_swypeResizeLayer(keyboard_frame, area,
+            bottom_child = self:_swypeResizeLayer(bottom_child, area,
                 inset, inner_w, inner_h)
         end
         self[1] = adapter.bottom_container:new{
@@ -215,55 +225,106 @@ function KoreaderAdapter:install(VirtualKeyboard)
             adapter.key_adapter:keyHeight() * (#self.KEYS + 1))
     end
 
-    -- The keys block with the side panel in the wider strip beside it and
-    -- a spacer in the other, filling the keyboard's inner width.
-    function VirtualKeyboard:_swypeOneHandedRow(keys_group, area, block,
-            screen, inner_h)
+    -- The ◨ handle at the end of the suggestion row: tap or hold opens
+    -- KOReader's own key popup, with leave, move and resize on its top
+    -- row and a plain centre key that closes it again.
+    function VirtualKeyboard:_swypeHandle(width, height, block, screen)
         local keyboard = self
-        local strip_w = math.max(0, area.panel_w - self.key_padding)
-        local panel = adapter.side_panel:create{
-            width = strip_w,
-            height = inner_h,
-            button = adapter.one_handed.buttonSize(screen, strip_w, inner_h,
-                self.key_padding),
-            key_padding = self.key_padding,
-            side = area.panel_side,
-            target = adapter.one_handed.target(block, screen),
-            on_leave = function()
-                keyboard:_swypeSetOneHanded(function(one_handed, s)
-                    one_handed:setEnabled(s, false)
-                end)
-            end,
-            on_move = function()
-                keyboard:_swypeSetOneHanded(function(one_handed, s)
-                    one_handed:moveToTarget(s)
-                end)
-            end,
-            on_resize = function()
-                keyboard:_swypeStartResize()
-            end,
-        }
-        self.swype_mvp_panel_buttons = panel.buttons
-        local keys_box = adapter.center_container:new{
-            dimen = adapter.geometry:new{ w = area.keys_w, h = inner_h },
-            keys_group,
-        }
-        local gap = adapter.horizontal_span:new{ width = self.key_padding }
-        local row = adapter.horizontal_group:new{ allow_mirroring = false }
-        if area.panel_side == "left" then
-            table.insert(row, panel.widget)
-            table.insert(row, gap)
-            table.insert(row, keys_box)
-            table.insert(row,
-                adapter.horizontal_span:new{ width = area.after })
-        else
-            table.insert(row,
-                adapter.horizontal_span:new{ width = area.before })
-            table.insert(row, keys_box)
-            table.insert(row, gap)
-            table.insert(row, panel.widget)
+        local icon_dir = adapter.icon_dir
+        local target = adapter.one_handed.target(block, screen)
+        local handle
+        local function closePopup()
+            if handle.popup then
+                adapter.ui_manager:close(handle.popup)
+            end
         end
-        return row
+        local function leave()
+            closePopup()
+            keyboard:_swypeSetOneHanded(function(one_handed, s)
+                one_handed:setEnabled(s, false)
+            end)
+        end
+        local function move()
+            closePopup()
+            keyboard:_swypeSetOneHanded(function(one_handed, s)
+                one_handed:moveToTarget(s)
+            end)
+        end
+        local function resize()
+            closePopup()
+            keyboard:_swypeStartResize()
+        end
+        handle = adapter.virtual_key:new{
+            key = adapter.one_handed.HINT,
+            label = adapter.one_handed.HINT,
+            is_tapless_handle = true,
+            -- Every entry keeps a plain string key: VirtualKeyPopup's
+            -- "key = v.key or v" falls back to the whole table otherwise,
+            -- which addChar cannot take a swipe fallback string from.
+            key_chars = {
+                [1] = { key = "close", label = adapter.one_handed.HINT },
+                northwest = { key = "leave",
+                    icon = icon_dir .. "/leave.svg" },
+                northwest_func = leave,
+                north = { key = "move",
+                    icon = icon_dir .. "/" .. target .. ".svg" },
+                north_func = move,
+                northeast = { key = "resize",
+                    icon = icon_dir .. "/resize.svg" },
+                northeast_func = resize,
+            },
+            keyboard = keyboard,
+            width = width,
+            height = height,
+        }
+        -- The callback swap from _swypeWireGlobeKey: while the popup is
+        -- built, the centre key reads handle.callback as its own, so it
+        -- closes the popup; afterwards it is tap again.
+        local tap
+        local function open()
+            handle.callback = closePopup
+            handle.popup = adapter.virtual_key_popup:new{
+                parent_key = handle,
+            }
+            keyboard:_swypeOutlinePopup(handle.popup)
+            handle.callback = tap
+        end
+        tap = function()
+            open()
+            -- No finger is down after a tap; see _swypeWireGlobeKey.
+            handle.ignore_key_release = nil
+        end
+        handle.callback = tap
+        handle.hold_callback = open
+        handle.hold_cb_is_popup = true
+        -- Only northwest/north/northeast do anything; an undirected swipe
+        -- must not fall back to typing the handle's own key.
+        handle.swipe_callback = function(ges)
+            local key_function = handle.key_chars[ges.direction .. "_func"]
+            if key_function then
+                key_function()
+            end
+        end
+        return handle
+    end
+
+    -- Thickens and rounds each popup key's frame, shrinking its content
+    -- by the same amount so the key's own size does not change. A swipe
+    -- on one of them must not fall back to typing its (possibly blank)
+    -- key either.
+    function VirtualKeyboard:_swypeOutlinePopup(popup)
+        for _, row in ipairs(popup.layout) do
+            for _, key in ipairs(row) do
+                local frame = key[1]
+                local old_border = frame.bordersize
+                frame.bordersize = adapter.size.border.thick
+                frame.radius = adapter.size.radius.default
+                local shrink = 2 * (frame.bordersize - old_border)
+                frame[1].dimen.w = frame[1].dimen.w - shrink
+                frame[1].dimen.h = frame[1].dimen.h - shrink
+                key.swipe_callback = nil
+            end
+        end
     end
 
     -- Tap 🌐 for KOReader's layout menu, which KOReader opens on hold;
@@ -319,7 +380,9 @@ function KoreaderAdapter:install(VirtualKeyboard)
 
     -- Rebuilds the keys from the saved state. A new height goes through the
     -- dialog, which builds a new keyboard from the saved settings, so this
-    -- one is not touched after that.
+    -- one is not touched after that. Otherwise, the keys frame may have
+    -- moved or changed width, so the whole bottom band repaints, not just
+    -- its own (possibly stale) dimen.
     function VirtualKeyboard:_swypeRebuild()
         local old_height = self.height
         self:_swypeReset()
@@ -330,7 +393,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
             parent:onKeyboardHeightChanged()
             return
         end
-        self:_refresh(true, self.height ~= old_height)
+        local tallest = math.max(old_height, self.height)
+        adapter.ui_manager:setDirty("all", "flashui", adapter.geometry:new{
+            x = 0,
+            y = adapter.screen:getHeight() - tallest,
+            w = self.width,
+            h = tallest,
+        })
     end
 
     -- Resize mode starts from the saved block at its actual height, which
@@ -351,9 +420,9 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self:_refresh(true)
     end
 
-    -- The faded keys and panel take no gestures while resizing; the frame
-    -- over them takes the drags.
-    function VirtualKeyboard:_swypeResizeLayer(keyboard_frame, area, inset,
+    -- The faded keys take no gestures while resizing; the frame over them
+    -- takes the drags.
+    function VirtualKeyboard:_swypeResizeLayer(bottom_child, area, inset,
             inner_w, inner_h)
         local keyboard = self
         for _, row in ipairs(self.layout) do
@@ -361,21 +430,22 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 key.ges_events = {}
             end
         end
-        for _, button in ipairs(self.swype_mvp_panel_buttons or {}) do
-            button.ges_events = {}
+        if self.swype_mvp_handle then
+            self.swype_mvp_handle.ges_events = {}
         end
         local frame = adapter.resize_frame:create(self, {
             width = self.width,
             height = self.height,
-            keys = { x = inset + area.before, y = inset,
-                w = area.keys_w, h = inner_h },
-            fade = { x = inset, y = inset, w = inner_w, h = inner_h },
+            keys = { x = area.frame_x + inset, y = inset,
+                w = inner_w, h = inner_h },
+            fade = { x = area.frame_x + inset, y = inset,
+                w = inner_w, h = inner_h },
             on_reset = function() keyboard:_swypeResetResize() end,
             on_done = function() keyboard:_swypeFinishResize() end,
         })
         return adapter.overlap_group:new{
             allow_mirroring = false,
-            keyboard_frame,
+            bottom_child,
             frame,
         }
     end

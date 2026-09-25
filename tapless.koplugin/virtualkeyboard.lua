@@ -144,14 +144,6 @@ local PanelButton = loadModule("panel_button"):new{
     gesture_range = GestureRange,
     blitbuffer = Blitbuffer,
 }
-local SidePanel = loadModule("side_panel"):new{
-    panel_button = PanelButton,
-    horizontal_group = HorizontalGroup,
-    horizontal_span = HorizontalSpan,
-    vertical_group = VerticalGroup,
-    vertical_span = VerticalSpan,
-    icon_dir = plugin_dir .. "/icons",
-}
 local ResizeFrame = loadModule("resize_frame"):new{
     ui_manager = UIManager,
     input_container = InputContainer,
@@ -189,10 +181,11 @@ return loadModule("koreader_adapter"):new{
     trace_renderer = TraceRenderer,
     key_adapter = KeyAdapter,
     one_handed = OneHanded:new(G_reader_settings),
-    side_panel = SidePanel,
     resize_frame = ResizeFrame,
     overlap_group = OverlapGroup,
     virtual_key = VirtualKey,
+    virtual_key_popup = VirtualKeyPopup,
+    icon_dir = plugin_dir .. "/icons",
     ui_manager = UIManager,
     settings = G_reader_settings,
     screen = Screen,
