@@ -7,7 +7,6 @@ KeyAdapter.SPACE_CURSOR_SETTING = "tapless_space_cursor"
 local OPTIONAL_METHODS = {
     onMultiswipeKey = true,
     onSpaceCursorPan = true,
-    onHoldReleaseKey = true,
 }
 
 function KeyAdapter:new(normalization, gesture_range, settings)
