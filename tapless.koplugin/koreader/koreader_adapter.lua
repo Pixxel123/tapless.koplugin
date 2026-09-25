@@ -364,7 +364,8 @@ function KoreaderAdapter:install(VirtualKeyboard)
             x = key_box.x + key_box.w - w
         end
         position.dimen.x = math.max(0, math.min(x, position.dimen.w - w))
-        position.dimen.y = math.max(0, board.y - h)
+        -- Its bottom border lies on the keyboard's top one, not above it.
+        position.dimen.y = math.max(0, board.y - h + border)
     end
 
     -- Tap 🌐 for KOReader's layout menu, which KOReader opens on hold;
