@@ -101,7 +101,7 @@ function OneHanded:state(screen)
     return state
 end
 
--- Lets change edit this orientation's state, then saves it.
+-- Applies change to this orientation's state, then saves it.
 function OneHanded:update(screen, change)
     local state = self:state(screen)
     change(state)
