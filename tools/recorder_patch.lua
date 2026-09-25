@@ -225,9 +225,13 @@ local function install()
     end)
 
     wrap("_swypeSelectCandidate", function(original, keyboard, candidate)
+        local session = keyboard.swype_mvp_session
+        -- A word completing tapped letters is no swipe's outcome.
+        if session and session.getCompletion and session:getCompletion() then
+            return original(keyboard, candidate)
+        end
         local index
-        local shown = keyboard.swype_mvp_session
-            and keyboard.swype_mvp_session:getCandidates()
+        local shown = session and session:getCandidates()
         for position, item in ipairs(shown or {}) do
             if not index and candidate and (item == candidate
                     or item.word == candidate.word) then

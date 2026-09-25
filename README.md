@@ -140,6 +140,7 @@ or a symbol instead of a word.
 - Words you keep typing rise up the list.
 - The word that usually follows the one before it wins ("the sun", not
   "the sin").
+- Words you tap out letter by letter count too, not just swipes.
 
 <details>
 <summary>How learning works</summary>
@@ -151,6 +152,11 @@ use up to a limit, and never lifts a word above the most common words. A
 word used four times or more is also exempt from the rare short word
 penalty. Up to 2000 words are kept, dropping the least used. The counts
 are saved in KOReader's settings.
+
+**Tapped words.** A word you tap out and finish with a space or
+punctuation is counted once and learned after the word before it, the
+same as a swiped word you keep. Only dictionary and personal words
+count, so typos aren't learned.
 
 **Word pairs.** Tapless already learned which word you type after which.
 The fork adds a table of common word pairs for English, so this works from
@@ -185,6 +191,7 @@ without the table.
 
 ### Typing
 
+- Pause while tapping out a word and the row offers words that finish it.
 - A second finger touching the screen no longer cuts a swipe short.
 - A swipe that only touches one letter types that letter.
 - Fast tapping doesn't turn into swiped words.
@@ -192,6 +199,37 @@ without the table.
 
 <details>
 <summary>Typing details</summary>
+
+**Finishing tapped words.** When you stop tapping for about half a
+second, the row shows up to four words that start with what you've typed.
+They're ranked the same way as swipes: how common the word is, whether it
+usually follows the word before, and how often you use it. Tap one and it
+replaces what you typed, keeps your capitals ("Th" gives "The"), and the
+next word gets its space like after a swipe. The row isn't redrawn on
+every letter, only when you pause, to keep e-ink refreshes down. If you
+carry on typing past what the row was made for, a stale suggestion can't
+be picked by mistake. The offer to add an unknown word to your personal
+words still shows when nothing matches. It can be turned off under
+`Tools → Tapless → Suggest words while typing`.
+
+The most common 256 words for each first letter are always searched.
+From three letters in, the rest of the dictionary is searched too. Those
+word lists are read in the background while you type the first letters,
+one at a time, so typing never waits for the disk. The first time you
+start a word with a letter they may not all be ready yet, so rarer words
+can be missing from the row for that one word.
+
+Typing the words from the recorded sessions letter by letter:
+
+| | Sentences (553 words) | Random words (212) |
+|---|---|---|
+| Word in the row before it's fully typed | 97% | 91% |
+| Word first in the row before it's fully typed | 47% | 25% |
+| Keystrokes saved, picking it as soon as it shows | 46% | 39% |
+
+Word pairs lift the "first in the row" figure on sentences from 35% to
+45%, and searching past the most common words takes the random words from
+64% in the row to 91%.
 
 **Second finger.** A thumb resting on the edge of the screen mid-swipe was
 paired with the swiping finger into a two-finger gesture, and the swipe
@@ -269,7 +307,12 @@ space bar (see below), so all four slots show words.
 
 ## Options
 
-These are under `Tools → Tapless` and are off by default:
+These are under `Tools → Tapless`. This one is on by default:
+
+- **Suggest words while typing**: pause while tapping out a word and the
+  suggestion row offers words that finish it.
+
+These are off by default:
 
 - **Slide on space to move cursor**: slide left or right along the space
   bar to move the text cursor. Holding space still switches language.

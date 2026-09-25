@@ -189,6 +189,99 @@ function RecognitionEngine:pickCandidates(options)
     return fallback
 end
 
+-- Words that complete a word being tapped out, best first. options:
+-- prefix, the letters typed so far as a signature (normalised, lowercase);
+-- typed, the word as typed, left out of the results; dictionary; limit;
+-- normalization_profile; context_bonus(previous_word, word) and
+-- previous_word; word_uses(word); and full, which also looks through
+-- every word starting with the prefix's letter, not only the most common,
+-- once the prefix has FULL_COMPLETION_PREFIX letters and too few matched
+-- (only_loaded: only the word lists already read from disk).
+-- Each result is { word, signature, ranked_score, personal }: frequency,
+-- plus what the word earns after the previous word and from its uses.
+RecognitionEngine.FULL_COMPLETION_PREFIX = 3
+
+function RecognitionEngine:completeWord(options)
+    local prefix = options.prefix or ""
+    local limit = options.limit or 4
+    local dictionary = options.dictionary or "en"
+    if #prefix == 0 then
+        return {}
+    end
+    local package = self.dictionary_store:open(dictionary)
+    if not package then
+        return {}
+    end
+    local data_lang = package.descriptor.data_language or dictionary
+    local typed = (options.typed or ""):lower()
+    local first = string.sub(prefix, 1, 1)
+    local results, seen = {}, {}
+    local function consider(entry, personal)
+        local signature = entry.signature or ""
+        local word = entry.word
+        if not word or seen[word] or word:lower() == typed
+                or string.sub(signature, 1, #prefix) ~= prefix
+                or tripled(word:lower())
+                or (entry.lang and entry.lang ~= dictionary
+                    and entry.lang ~= data_lang)
+                or (self.blocked_words
+                    and self.blocked_words:contains(dictionary, word)) then
+            return
+        end
+        seen[word] = true
+        local freq = entry.freq or 0
+        local uses = options.word_uses and options.word_uses(word) or 0
+        local bonus = options.context_bonus
+            and options.context_bonus(options.previous_word, word) or 0
+        results[#results + 1] = {
+            word = word,
+            signature = signature,
+            ranked_score = freq + bonus
+                + self.scoring:usageBonus(freq, uses),
+            personal = personal == true,
+        }
+    end
+    if self.personal_dictionary then
+        for code = string.byte("a"), string.byte("z") do
+            local bucket = self.personal_dictionary:getBucket(first,
+                string.char(code), dictionary, options.normalization_profile)
+            for _, entry in ipairs(bucket and bucket.entries or {}) do
+                consider(entry, true)
+            end
+        end
+    end
+    for _, entry in ipairs(self.dictionary_store:loadPopularWords(
+            first, dictionary) or {}) do
+        consider(entry)
+    end
+    if options.full and #prefix >= self.FULL_COMPLETION_PREFIX
+            and #results < limit then
+        local store = self.dictionary_store
+        for code = string.byte("a"), string.byte("z") do
+            local last = string.char(code)
+            -- only_loaded: never wait for the disk; what is not loaded yet
+            -- is left out.
+            if not options.only_loaded
+                    or store:isBucketLoaded(dictionary, first .. last) then
+                local bucket = store:loadBucket(first, last, dictionary)
+                for _, entry in ipairs(bucket and bucket.entries or {}) do
+                    consider(entry)
+                end
+            end
+        end
+    end
+    table.sort(results, function(left, right)
+        if left.ranked_score ~= right.ranked_score then
+            return left.ranked_score > right.ranked_score
+        end
+        return left.word < right.word
+    end)
+    for index = #results, limit + 1, -1 do
+        results[index] = nil
+    end
+    return results
+end
+
 -- The suggestion row: candidates in rank order, leaving out spellings
 -- that only repeat letters of a word already shown. If that leaves out
 -- everything, the best candidates are shown as they are.

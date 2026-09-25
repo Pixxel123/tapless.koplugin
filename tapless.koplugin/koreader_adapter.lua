@@ -274,6 +274,28 @@ function KoreaderAdapter:install(VirtualKeyboard)
         }
     end
 
+    -- Words completing a tapped-out word: prefix is its letters as a
+    -- signature, typed the word as typed.
+    function VirtualKeyboard:_swypeCompleteWord(prefix, typed, previous_word,
+            limit)
+        return adapter.recognition_engine:completeWord{
+            prefix = prefix,
+            typed = typed,
+            limit = limit,
+            dictionary = self.swype_mvp_dictionary or "en",
+            normalization_profile = self.swype_mvp_normalization_profile,
+            previous_word = previous_word,
+            context_bonus = function(previous, word)
+                return self:_swypeContextBonus(previous, word)
+            end,
+            word_uses = function(word)
+                return self:_swypeWordUses(word)
+            end,
+            full = true,
+            only_loaded = true,
+        }
+    end
+
     function VirtualKeyboard:_swypeGetPreviousWord()
         return adapter.input_controller:getPreviousWord(self)
     end

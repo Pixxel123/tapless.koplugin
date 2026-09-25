@@ -7,11 +7,36 @@ function InputSession:new()
         last_insert = nil,
         debug_signature = nil,
         personal_offer = nil,
+        completion = nil,
     }, self)
 end
 
 function InputSession:getCandidates()
     return self.candidates
+end
+
+-- Words completing the word being tapped out, shown in the suggestion
+-- row. completion is what they were found for: { inputbox, prefix,
+-- previous_word }. Nothing was inserted, so there is nothing to undo.
+function InputSession:setCompletions(candidates, completion)
+    self.candidates = candidates
+    self.completion = completion
+    self.last_insert = nil
+    self.personal_offer = nil
+end
+
+function InputSession:getCompletion()
+    return self.completion
+end
+
+-- Drops the completions, if the row shows any; true when it did.
+function InputSession:clearCompletions()
+    if not self.completion then
+        return false
+    end
+    self.completion = nil
+    self.candidates = nil
+    return true
 end
 
 -- Takes a candidate off the suggestions; returns the ones left.
@@ -54,6 +79,7 @@ function InputSession:clear(keep_debug)
     self.candidates = nil
     self.last_insert = nil
     self.personal_offer = nil
+    self.completion = nil
     if not keep_debug then
         self.debug_signature = nil
     end
@@ -75,6 +101,7 @@ function InputSession:recordInsert(signature, candidates, previous_word)
     local output_word = candidates[1].output_word or candidates[1].word
     local inserted = output_word
     self.candidates = candidates
+    self.completion = nil
     self.personal_offer = nil
     self.debug_signature = signature
     self.last_insert = {
@@ -88,6 +115,10 @@ function InputSession:recordInsert(signature, candidates, previous_word)
 end
 
 function InputSession:rejection()
+    -- Completions typed nothing: backspace deletes as usual.
+    if self.completion then
+        return { handled = false }
+    end
     if self.last_insert and self.last_insert.text then
         return {
             handled = true,

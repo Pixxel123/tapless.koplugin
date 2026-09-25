@@ -204,6 +204,20 @@ function Tapless:addToMainMenu(menu_items)
                         "tapless_double_space_period")
                 end,
             },
+            {
+                text = "Suggest words while typing",
+                help_text = "When you pause while tapping out a word, the "
+                    .. "suggestion row offers words that finish it. Tap one "
+                    .. "to use it.",
+                checked_func = function()
+                    return G_reader_settings:nilOrTrue(
+                        "tapless_tap_completions")
+                end,
+                callback = function()
+                    G_reader_settings:flipNilOrTrue(
+                        "tapless_tap_completions")
+                end,
+            },
         },
     }
 end
