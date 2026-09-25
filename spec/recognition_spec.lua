@@ -81,7 +81,8 @@ local function recognize(words, signature, start, intents, turns, blocked,
         tune(scoring)
     end
     local engine = T.load("recognition_engine"):new(newStore(words), scoring,
-        T.load("geometry_reranker"):new(), nil, blocked)
+        T.load("geometry_reranker"):new(T.load("path_shape"):new()), nil,
+        blocked)
     local points, observations = { start }, {}
     for index = 1, #signature do
         if index > 1 then

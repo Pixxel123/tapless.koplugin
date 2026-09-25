@@ -181,6 +181,13 @@ function Replay.loadPlugin(plugin_dir, options)
         end
         return context_model, usage_model
     end
+    -- Plugins from before path_shape.lua build their reranker without one.
+    local path_shape_file = io.open(path("path_shape"), "r")
+    local path_shape
+    if path_shape_file then
+        path_shape_file:close()
+        path_shape = load("path_shape"):new()
+    end
     local plugin = {
         dir = plugin_dir,
         manifest = manifest,
@@ -190,7 +197,7 @@ function Replay.loadPlugin(plugin_dir, options)
         gesture_controller = load("gesture_controller"),
         engine = load("recognition_engine"):new(store,
             load("scoring"):new(normalization),
-            load("geometry_reranker"):new(),
+            load("geometry_reranker"):new(path_shape),
             personal_dictionary),
     }
     plugin.context_model, plugin.usage_model = newLearning()

@@ -27,6 +27,7 @@ local specs = {
     "usage_model_spec",
     "word_pairs_spec",
     "tap_completions_spec",
+    "path_shape_spec",
     "one_handed_spec",
     "icons_spec",
     "panel_button_spec",
