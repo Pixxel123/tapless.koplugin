@@ -101,6 +101,10 @@ function ShapeChannel:candidates(options)
     local dictionary = options.dictionary or "en"
     local data_lang = options.data_language or dictionary
     local found, seen = {}, {}
+    local limit = self.KEEP
+    local sample_count = path_shape.SAMPLE_COUNT
+    local max_score = path_shape.MAX_SCORE
+    local a = swipe.samples
     local function consider(entry)
         local word = entry.word
         local signature = entry.gesture_signature or entry.signature
@@ -121,9 +125,51 @@ function ShapeChannel:candidates(options)
         if ratio < self.MIN_RATIO or ratio > self.MAX_RATIO then
             return
         end
-        local shape = path_shape:score(swipe, ideal)
-        keep(found, { entry = entry, shape = shape,
-            rank = self.SHAPE_WEIGHT * shape - (entry.freq or 0) }, self.KEEP)
+        local b = path_shape:ensureSamples(ideal)
+        local length_term = math.min(max_score,
+            math.abs(swipe.length - ideal.length)
+                / math.max(ideal.scale, ideal.length))
+        local length_component = 0.15 * length_term
+        local freq = entry.freq or 0
+
+        -- Once found already holds limit items, a candidate whose rank
+        -- can already not beat the current worst kept one is going to be
+        -- discarded regardless of how the rest of its samples compare.
+        -- partial, below, only grows sample by sample (every term added
+        -- is a sqrt, so >= 0, and every step after that -- the *0.85,
+        -- the + length_component, the min, the *SHAPE_WEIGHT, the -freq
+        -- -- keeps that order under round-to-nearest), so the rank it
+        -- implies is a lower bound on the final rank at every step, and
+        -- at the last sample it equals rank exactly (mirrors the shape
+        -- and rank below; change both together): the two are compared
+        -- as ranks throughout, not converted to a score-space threshold
+        -- first, so this is exact rather than only true on this data.
+        local worst = #found >= limit and found[limit].rank or nil
+
+        local total = 0
+        for index = 1, 2 * sample_count, 2 do
+            local dx = a[index] - b[index]
+            local dy = a[index + 1] - b[index + 1]
+            total = total + math.sqrt(dx * dx + dy * dy)
+            if worst then
+                local partial = math.min(max_score,
+                    0.85 * (total / sample_count / ideal.scale)
+                        + length_component)
+                if self.SHAPE_WEIGHT * partial - freq >= worst then
+                    -- Would not have survived keep() below either, so
+                    -- stopping here changes nothing but the time spent.
+                    return
+                end
+            end
+        end
+        local shape = math.min(max_score,
+            (total / sample_count / ideal.scale) * 0.85 + length_component)
+        local rank = self.SHAPE_WEIGHT * shape - freq
+        if #found >= limit and rank >= found[limit].rank then
+            -- keep() would reject this anyway; skip its table too.
+            return
+        end
+        keep(found, { entry = entry, shape = shape, rank = rank }, limit)
     end
     local first_point, last_point = swipeEnds(swipe)
     local lasts = self:_lettersNear(last_point, key_centers)
