@@ -323,6 +323,11 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 local shrink = 2 * (frame.bordersize - old_border)
                 frame[1].dimen.w = frame[1].dimen.w - shrink
                 frame[1].dimen.h = frame[1].dimen.h - shrink
+                -- KOReader builds icon keys without alpha, which paints
+                -- our transparent SVGs as black squares.
+                if key.icon and frame[1][1] then
+                    frame[1][1].alpha = true
+                end
                 key.swipe_callback = nil
             end
         end
