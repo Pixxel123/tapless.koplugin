@@ -19,3 +19,8 @@ popular_index	words.popular.idx
 popular_per_first	256
 sha256_popular_data	1c9f217dc2f31b4e69db948c5ab556ea490fb87e50707f6594f890b469612681
 sha256_popular_index	823a2d30658ee1269f3e7ab56938e31b25c8413f62f23120ece460506315fe46
+pairs_data	words.pairs.tsv
+pairs_index	words.pairs.idx
+sha256_pairs_data	5bc91b90a6953b0c5c470c11e7072a0339d4186caa48e9eed0e2738b4d28320c
+sha256_pairs_index	3565b88619494a4229640f3e02214527081d732f81ea686ea1cb8f76aa6b4432
+pairs_source	Tatoeba English sentences, 2026-09-25 export (https://tatoeba.org), CC BY 2.0 FR

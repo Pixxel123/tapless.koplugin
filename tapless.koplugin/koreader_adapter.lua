@@ -279,7 +279,8 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:_swypeContextBonus(previous_word, word)
-        return adapter.input_controller:contextBonus(previous_word, word)
+        return adapter.input_controller:contextBonus(previous_word, word,
+            self.swype_mvp_dictionary or "en")
     end
 
     function VirtualKeyboard:_swypeWordUses(word)

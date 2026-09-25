@@ -171,8 +171,13 @@ function InputController:getPreviousWord(keyboard)
     end
 end
 
-function InputController:contextBonus(previous_word, word)
-    return self.context_model:bonus(previous_word, word)
+-- What word earns for following previous_word: learned from the user's
+-- own text, and from the dictionary's word-pair table.
+function InputController:contextBonus(previous_word, word, dictionary)
+    local store = self.dictionary_store
+    local pair_bonus = store.pairBonus
+        and store:pairBonus(previous_word, word, dictionary) or 0
+    return self.context_model:bonus(previous_word, word, pair_bonus)
 end
 
 function InputController:learnContext(previous_word, word)

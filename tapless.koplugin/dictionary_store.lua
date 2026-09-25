@@ -1,7 +1,19 @@
 local logger = require("logger")
 
-local DictionaryStore = {}
+local DictionaryStore = {
+    -- The most previous words whose followers are kept parsed at once.
+    PAIR_ROWS = 256,
+}
 DictionaryStore.__index = DictionaryStore
+
+-- The pair file's bucket for a previous word: its first two letters, or
+-- a one-letter word twice ("a" is in bucket "aa").
+local function pairKey(word)
+    if #word == 1 then
+        return word .. word
+    end
+    return string.sub(word, 1, 2)
+end
 
 function DictionaryStore:new(plugin_dir, registry, dictionary_index, time_api)
     return setmetatable({
@@ -14,8 +26,21 @@ function DictionaryStore:new(plugin_dir, registry, dictionary_index, time_api)
         first_bucket_cache = {},
         popular_cache = {},
         word_presence_cache = {},
+        pair_cache = {},
         prefetch_jobs = {},
     }, self)
+end
+
+local function closePackage(package)
+    if package and package.file then
+        package.file:close()
+    end
+    if package and package.popular_file then
+        package.popular_file:close()
+    end
+    if package and package.pairs_file then
+        package.pairs_file:close()
+    end
 end
 
 function DictionaryStore:open(dictionary)
@@ -50,12 +75,23 @@ function DictionaryStore:open(dictionary)
         popular_data_file = nil
     end
 
+    local pairs_file = descriptor.files.pairs_data
+        and io.open(descriptor.files.pairs_data, "rb")
+    local pairs_index = pairs_file and self.dictionary_index:loadIndex(
+        descriptor.files.pairs_index, 2)
+    if not pairs_index and pairs_file then
+        pairs_file:close()
+        pairs_file = nil
+    end
+
     local package = {
         descriptor = descriptor,
         index = index,
         file = data_file,
         popular_index = popular_index,
         popular_file = popular_data_file,
+        pairs_index = pairs_index,
+        pairs_file = pairs_file,
     }
     self.packages[dictionary] = package
     logger.info("swype mvp bucket dictionary", descriptor.files.bucket_data,
@@ -66,13 +102,13 @@ end
 function DictionaryStore:keepOnly(dictionary)
     for cached_dictionary, package in pairs(self.packages) do
         if cached_dictionary ~= dictionary then
-            if package and package.file then
-                package.file:close()
-            end
-            if package and package.popular_file then
-                package.popular_file:close()
-            end
+            closePackage(package)
             self.packages[cached_dictionary] = nil
+        end
+    end
+    for cached_dictionary in pairs(self.pair_cache) do
+        if cached_dictionary ~= dictionary then
+            self.pair_cache[cached_dictionary] = nil
         end
     end
     for cached_dictionary in pairs(self.bucket_cache) do
@@ -106,14 +142,9 @@ function DictionaryStore:keepOnly(dictionary)
 end
 
 function DictionaryStore:invalidate(dictionary)
-    local package = self.packages[dictionary]
-    if package and package.file then
-        package.file:close()
-    end
-    if package and package.popular_file then
-        package.popular_file:close()
-    end
+    closePackage(self.packages[dictionary])
     self.packages[dictionary] = nil
+    self.pair_cache[dictionary] = nil
     self.bucket_cache[dictionary] = nil
     self.first_bucket_cache[dictionary] = nil
     self.popular_cache[dictionary] = nil
@@ -277,6 +308,55 @@ function DictionaryStore:loadFirstBuckets(first, dictionary)
     end
     cache[first] = entries
     return entries
+end
+
+-- The words that tend to follow previous_word in the dictionary's
+-- word-pair table, each with its bonus: { word = bonus }, or false when
+-- there are none. A row is read from disk the first time it is asked for.
+function DictionaryStore:pairRow(previous_word, dictionary)
+    dictionary = dictionary or "en"
+    local cache = self.pair_cache[dictionary]
+    if not cache then
+        cache = { size = 0, rows = {} }
+        self.pair_cache[dictionary] = cache
+    end
+    local row = cache.rows[previous_word]
+    if row ~= nil then
+        return row
+    end
+    row = false
+    local package = self:open(dictionary)
+    local meta = package and package.pairs_index
+        and type(previous_word) == "string"
+        and previous_word:match("^[a-z]+$")
+        and package.pairs_index[pairKey(previous_word)]
+    if meta then
+        package.pairs_file:seek("set", meta.offset)
+        local data = "\n" .. (package.pairs_file:read(meta.bytes) or "")
+        local line = data:match("\n" .. previous_word .. "\t([^\n]*)")
+        if line then
+            row = {}
+            for word, bonus in line:gmatch("([^ :]+):(%d+)") do
+                row[word] = tonumber(bonus)
+            end
+        end
+    end
+    if cache.size >= self.PAIR_ROWS then
+        cache.size, cache.rows = 0, {}
+    end
+    cache.rows[previous_word] = row
+    cache.size = cache.size + 1
+    return row
+end
+
+-- The word-pair table's bonus for word following previous_word; 0 when
+-- the dictionary has no table or no such pair.
+function DictionaryStore:pairBonus(previous_word, word, dictionary)
+    if not previous_word or not word then
+        return 0
+    end
+    local row = self:pairRow(previous_word, dictionary)
+    return row and row[word] or 0
 end
 
 function DictionaryStore:loadPopularWords(first, dictionary)

@@ -14,6 +14,12 @@ local REQUIRED_FILES = {
     popular_data = "words.popular.tsv",
     popular_index = "words.popular.idx",
 }
+-- The word-pair table: which words tend to follow which. A dictionary
+-- works without it; it is used only when both files are there.
+local PAIR_FILES = {
+    pairs_data = "words.pairs.tsv",
+    pairs_index = "words.pairs.idx",
+}
 
 local Registry = {}
 
@@ -106,6 +112,12 @@ function Registry:_readDescriptor(path, id, bundled)
     local files = {}
     for role, filename in pairs(REQUIRED_FILES) do
         files[role] = path .. "/" .. filename
+    end
+    if lfs.attributes(path .. "/" .. PAIR_FILES.pairs_data)
+            and lfs.attributes(path .. "/" .. PAIR_FILES.pairs_index) then
+        for role, filename in pairs(PAIR_FILES) do
+            files[role] = path .. "/" .. filename
+        end
     end
     return {
         id = id,

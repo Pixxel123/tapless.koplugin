@@ -39,6 +39,8 @@ local OPTIONAL_FILES = {
     ["ATTRIBUTION.txt"] = true,
     ["LICENSE-wordfreq.txt"] = true,
     ["DATA-LICENSE.txt"] = true,
+    ["words.pairs.tsv"] = true,
+    ["words.pairs.idx"] = true,
 }
 local Manager = {
     catalog = nil,
@@ -622,6 +624,8 @@ function Manager:_extractAndValidate(package, zip_path, temp_dir)
         { "words.buckets.idx", manifest.sha256_index },
         { "words.popular.tsv", manifest.sha256_popular_data },
         { "words.popular.idx", manifest.sha256_popular_index },
+        { "words.pairs.tsv", manifest.sha256_pairs_data },
+        { "words.pairs.idx", manifest.sha256_pairs_index },
     }
     for _, item in ipairs(checksums) do
         if item[2] then

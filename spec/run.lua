@@ -25,6 +25,7 @@ local specs = {
     "candidate_row_spec",
     "dictionary_registry_spec",
     "usage_model_spec",
+    "word_pairs_spec",
 }
 
 for _, name in ipairs(specs) do

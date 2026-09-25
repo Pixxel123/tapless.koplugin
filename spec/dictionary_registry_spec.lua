@@ -89,6 +89,22 @@ it("sees a dictionary added to a folder", function()
     T.eq(registry:get("pl", ROOT .. "/plugin").name, "PL")
 end)
 
+it("lists a word-pair table only when both of its files are there",
+        function()
+    local registry = fresh()
+    local folder = ROOT .. "/plugin/dictionaries"
+    T.eq(registry:get("en", ROOT .. "/plugin").files.pairs_data, nil)
+    io.open(folder .. "/en/words.pairs.tsv", "w"):close()
+    registry:invalidate()
+    T.eq(registry:get("en", ROOT .. "/plugin").files.pairs_data, nil,
+        "no index, no table")
+    io.open(folder .. "/en/words.pairs.idx", "w"):close()
+    registry:invalidate()
+    local files = registry:get("en", ROOT .. "/plugin").files
+    T.eq(files.pairs_data, folder .. "/en/words.pairs.tsv")
+    T.eq(files.pairs_index, folder .. "/en/words.pairs.idx")
+end)
+
 it("rereads the folders when told the dictionaries changed", function()
     local registry = fresh()
     registry:list(ROOT .. "/plugin")

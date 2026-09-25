@@ -1,0 +1,8 @@
+Word-pair table (words.pairs.tsv, words.pairs.idx)
+
+Counted from the English sentences of Tatoeba (https://tatoeba.org),
+export of 2026-09-25, by tools/build_word_pairs.py. Tatoeba's sentences
+are the work of its contributors and are licensed under the Creative
+Commons Attribution 2.0 France licence (CC BY 2.0 FR,
+https://creativecommons.org/licenses/by/2.0/fr/). The table holds counts
+derived from them, not the sentences themselves.

@@ -17,3 +17,11 @@ Tapless settings are under **Tools → Tapless**. These are off by default:
 - **Double space types a period**: a second space right after a word, or a
   space right after a swiped word, becomes ". ". Not used on input method
   layouts (Chinese, Japanese, Korean, Vietnamese).
+
+## Word pairs
+
+In English, a swipe that could be several words prefers the one that
+usually follows the word before it ("the sun", not "the sin"). The table of
+which words follow which is counted from the English sentences of
+[Tatoeba](https://tatoeba.org) (CC BY 2.0 FR) by `tools/build_word_pairs.py`;
+see `tapless.koplugin/dictionaries/en/ATTRIBUTION.txt`.
