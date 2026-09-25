@@ -29,6 +29,7 @@ local specs = {
     "tap_completions_spec",
     "path_shape_spec",
     "missing_letters_spec",
+    "shape_channel_spec",
     "one_handed_spec",
     "icons_spec",
     "panel_button_spec",

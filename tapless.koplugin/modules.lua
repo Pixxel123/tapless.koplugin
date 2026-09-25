@@ -29,6 +29,7 @@ return {
     scoring = "recognition/scoring.lua",
     geometry_reranker = "recognition/geometry_reranker.lua",
     path_shape = "recognition/path_shape.lua",
+    shape_channel = "recognition/shape_channel.lua",
     normalization = "recognition/normalization.lua",
 
     context_model = "learning/context_model.lua",
