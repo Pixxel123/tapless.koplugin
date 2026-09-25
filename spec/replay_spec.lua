@@ -320,6 +320,20 @@ it("learns the intended word after its swipe", function()
     Replay.learn(plugin, attempt)  -- no context model: no error
 end)
 
+it("replays a plugin from before its modules were in folders", function()
+    local dir = os.tmpname()
+    os.remove(dir)
+    os.execute('cp -r "' .. T.plugin_dir .. '" "' .. dir .. '"')
+    for name, path in pairs(dofile(dir .. "/modules.lua")) do
+        os.rename(dir .. "/" .. path, dir .. "/" .. name .. ".lua")
+    end
+    os.remove(dir .. "/modules.lua")
+    local flat = Replay.loadPlugin(dir)
+    local first = Replay.run(flat, attemptFor("water")).words[1]
+    os.execute('rm -rf "' .. dir .. '"')
+    T.eq(first, "water")
+end)
+
 it("gives a plugin a usage model only when its code has one", function()
     T.eq(Replay.loadPlugin(T.plugin_dir).usage_model, nil)
     T.truthy(Replay.loadPlugin(T.plugin_dir, { usage = true }).usage_model)
@@ -327,7 +341,7 @@ it("gives a plugin a usage model only when its code has one", function()
     local dir = os.tmpname()
     os.remove(dir)
     os.execute('cp -r "' .. T.plugin_dir .. '" "' .. dir .. '"')
-    os.remove(dir .. "/usage_model.lua")
+    os.remove(dir .. "/learning/usage_model.lua")
     local old = Replay.loadPlugin(dir, { usage = true })
     local first = Replay.run(old, attemptFor("water")).words[1]
     os.execute('rm -rf "' .. dir .. '"')

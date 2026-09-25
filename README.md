@@ -623,6 +623,22 @@ These are off by default:
   space right after a swiped word, becomes ". ". Not used on input method
   layouts (Chinese, Japanese, Korean, Vietnamese).
 
+## Code layout
+
+The plugin's Lua files are grouped by what they do. `modules.lua` lists
+where each one lives, and the plugin, tests and tools all load them by
+name through it.
+
+| Folder | What's in it |
+|---|---|
+| `koreader/` | Hooks into KOReader's keyboard and touch handling |
+| `input/` | Turning touches and key presses into typed text |
+| `recognition/` | Finding the words a swipe or tapped letters could be |
+| `learning/` | The words and word pairs you keep |
+| `dictionary/` | Reading, installing and managing word lists |
+| `ui/` | Drawing the suggestion row and the swipe trail |
+| `dictionaries/` | The word lists and word-pair tables themselves |
+
 ## Testing tools
 
 None of this is in the plugin folder or changes the plugin.

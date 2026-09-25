@@ -4,8 +4,10 @@ package.preload["ffi/utf8proc"] = function()
     return { lowercase_dumb = function(text) return text:lower() end }
 end
 
+-- Loads a plugin module by name, from where modules.lua says it lives.
 function T.load(module)
-    return dofile(T.plugin_dir .. "/" .. module .. ".lua")
+    T.modules = T.modules or dofile(T.plugin_dir .. "/modules.lua")
+    return dofile(T.plugin_dir .. "/" .. assert(T.modules[module], module))
 end
 
 function T.eq(actual, expected, message)

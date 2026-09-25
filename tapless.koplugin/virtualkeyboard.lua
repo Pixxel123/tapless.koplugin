@@ -18,47 +18,51 @@ local Screen = Device.screen
 
 local source = debug.getinfo(1, "S").source
 local plugin_dir = source:match("^@(.+)/[^/]+%.lua$") or "."
+local modules = dofile(plugin_dir .. "/modules.lua")
+local function loadModule(name)
+    return dofile(plugin_dir .. "/" .. modules[name])
+end
 local VirtualKeyboard = require("ui/widget/virtualkeyboard")
 
 if VirtualKeyboard._tapless_adapter_installed then
     return VirtualKeyboard
 end
 
-local findUpvalue = dofile(plugin_dir .. "/find_upvalue.lua")
+local findUpvalue = loadModule("find_upvalue")
 
 local VirtualKey = assert(findUpvalue(VirtualKeyboard.addKeys, "VirtualKey"),
     "Tapless: incompatible KOReader VirtualKeyboard.addKeys")
-local CandidateRow = dofile(plugin_dir .. "/candidate_row.lua")
-local DictionaryRegistry = dofile(plugin_dir .. "/dictionary_registry.lua")
-local DictionaryManager = dofile(plugin_dir .. "/dictionary_manager.lua")
-local DictionaryIndex = dofile(plugin_dir .. "/dictionary_index.lua")
-local DictionaryStore = dofile(plugin_dir .. "/dictionary_store.lua")
+local CandidateRow = loadModule("candidate_row")
+local DictionaryRegistry = loadModule("dictionary_registry")
+local DictionaryManager = loadModule("dictionary_manager")
+local DictionaryIndex = loadModule("dictionary_index")
+local DictionaryStore = loadModule("dictionary_store")
     :new(plugin_dir, DictionaryRegistry, DictionaryIndex, time)
-local InputSession = dofile(plugin_dir .. "/input_session.lua")
-local Normalization = dofile(plugin_dir .. "/normalization.lua"):new(plugin_dir)
-local PersonalDictionary = dofile(plugin_dir .. "/personal_dictionary.lua")
+local InputSession = loadModule("input_session")
+local Normalization = loadModule("normalization"):new(plugin_dir)
+local PersonalDictionary = loadModule("personal_dictionary")
     :new(Normalization, DictionaryIndex)
-local BlockedWords = dofile(plugin_dir .. "/blocked_words.lua"):new()
-local KeyboardGeometry = dofile(plugin_dir .. "/keyboard_geometry.lua")
+local BlockedWords = loadModule("blocked_words"):new()
+local KeyboardGeometry = loadModule("keyboard_geometry")
     :new(Normalization)
-local PrefetchController = dofile(plugin_dir .. "/prefetch_controller.lua")
-local Scoring = dofile(plugin_dir .. "/scoring.lua"):new(Normalization)
-local GeometryReranker = dofile(plugin_dir .. "/geometry_reranker.lua"):new()
-local TraceCollector = dofile(plugin_dir .. "/trace_collector.lua")
-local GestureController = dofile(plugin_dir .. "/gesture_controller.lua")
+local PrefetchController = loadModule("prefetch_controller")
+local Scoring = loadModule("scoring"):new(Normalization)
+local GeometryReranker = loadModule("geometry_reranker"):new()
+local TraceCollector = loadModule("trace_collector")
+local GestureController = loadModule("gesture_controller")
     :new(TraceCollector, UIManager, time, Geom)
-local TraceRenderer = dofile(plugin_dir .. "/trace_renderer.lua")
+local TraceRenderer = loadModule("trace_renderer")
     :new(Screen, UIManager, Geom)
-local ContextModel = dofile(plugin_dir .. "/context_model.lua")
+local ContextModel = loadModule("context_model")
     :new(G_reader_settings, "keyboard_swype_mvp_context_counts")
-local UsageModel = dofile(plugin_dir .. "/usage_model.lua")
+local UsageModel = loadModule("usage_model")
     :new(G_reader_settings, "tapless_word_usage")
-local TextCase = dofile(plugin_dir .. "/text_case.lua"):new(Normalization)
-local InputController = dofile(plugin_dir .. "/input_controller.lua")
+local TextCase = loadModule("text_case"):new(Normalization)
+local InputController = loadModule("input_controller")
     :new(ContextModel, Normalization, logger, TextCase,
         PersonalDictionary, DictionaryStore, UIManager, G_reader_settings,
         BlockedWords, time, UsageModel)
-local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
+local DictionaryController = loadModule("dictionary_controller")
     :new{
         plugin_dir = plugin_dir,
         manager = DictionaryManager,
@@ -77,13 +81,13 @@ local DictionaryController = dofile(plugin_dir .. "/dictionary_controller.lua")
 DictionaryManager.language_controller = DictionaryController
 DictionaryManager.blocked_words = BlockedWords
 
-local KeyAdapter = dofile(plugin_dir .. "/key_adapter.lua")
+local KeyAdapter = loadModule("key_adapter")
     :new(Normalization, GestureRange, G_reader_settings)
 -- Look this up before Tapless wraps VirtualKey.init.
 local VirtualKeyPopup = findUpvalue(VirtualKey.init, "VirtualKeyPopup")
 KeyAdapter:install(VirtualKey)
 
-dofile(plugin_dir .. "/concurrent_taps.lua").install{
+loadModule("concurrent_taps").install{
     input = Device.input,
     gesture_detector = require("device/gesturedetector"),
     ui_manager = UIManager,
@@ -93,7 +97,7 @@ dofile(plugin_dir .. "/concurrent_taps.lua").install{
 }
 
 -- After concurrent_taps: both look up Contact in newContact's upvalues.
-dofile(plugin_dir .. "/stray_touches.lua").install{
+loadModule("stray_touches").install{
     gesture_detector = require("device/gesturedetector"),
     logger = logger,
     swiping = function()
@@ -109,7 +113,7 @@ dofile(plugin_dir .. "/stray_touches.lua").install{
     end,
 }
 
-local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
+local KeyboardUI = loadModule("keyboard_ui"):new{
     candidate_row = CandidateRow,
     confirm_box = ConfirmBox,
     horizontal_group = HorizontalGroup,
@@ -118,7 +122,7 @@ local KeyboardUI = dofile(plugin_dir .. "/keyboard_ui.lua"):new{
     gesture_range = GestureRange,
     screen = Screen,
 }
-local RecognitionEngine = dofile(plugin_dir .. "/recognition_engine.lua")
+local RecognitionEngine = loadModule("recognition_engine")
     :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary,
         BlockedWords)
 
@@ -129,7 +133,7 @@ function VirtualKeyboard.taplessOpenDictionaryManager()
     DictionaryManager:open(nil, plugin_dir, PersonalDictionary)
 end
 
-return dofile(plugin_dir .. "/koreader_adapter.lua"):new{
+return loadModule("koreader_adapter"):new{
     input_session = InputSession,
     prefetch_controller = PrefetchController,
     dictionary_store = DictionaryStore,

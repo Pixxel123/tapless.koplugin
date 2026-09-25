@@ -86,8 +86,19 @@ end
 -- neither learns nor uses word counts. plugin:resetLearning() starts both
 -- models over from their seeds.
 function Replay.loadPlugin(plugin_dir, options)
+    -- A plugin lists where its modules live in modules.lua; older ones
+    -- kept them all in the plugin folder.
+    local modules_file = io.open(plugin_dir .. "/modules.lua", "r")
+    local modules = {}
+    if modules_file then
+        modules_file:close()
+        modules = dofile(plugin_dir .. "/modules.lua")
+    end
+    local function path(name)
+        return plugin_dir .. "/" .. (modules[name] or name .. ".lua")
+    end
     local function load(name)
-        return dofile(plugin_dir .. "/" .. name .. ".lua")
+        return dofile(path(name))
     end
     local manifests = {}
     local function manifest(id)
@@ -161,7 +172,7 @@ function Replay.loadPlugin(plugin_dir, options)
                 CONTEXT_SETTING_KEY)
         end
         local usage_file = options and options.usage
-            and io.open(plugin_dir .. "/usage_model.lua", "r")
+            and io.open(path("usage_model"), "r")
         if usage_file then
             usage_file:close()
             usage_model = load("usage_model"):new(

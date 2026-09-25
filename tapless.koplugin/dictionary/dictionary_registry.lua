@@ -4,7 +4,8 @@ local DataStorage = require("datastorage")
 local lfs = require("libs/libkoreader-lfs")
 
 local source = debug.getinfo(1, "S").source
-local DEFAULT_PLUGIN_DIR = source:match("^@(.+)/dictionary_registry%.lua$") or "."
+local DEFAULT_PLUGIN_DIR = source:match(
+    "^@(.+)/dictionary/dictionary_registry%.lua$") or "."
 local MAX_MANIFEST_BYTES = 64 * 1024
 local DEFAULT_NORMALIZATION_PROFILE = "latin-extended-v1"
 local REQUIRED_FILES = {

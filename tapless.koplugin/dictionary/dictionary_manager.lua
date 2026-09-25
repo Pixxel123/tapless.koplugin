@@ -20,8 +20,8 @@ local util = require("util")
 local Screen = require("device").screen
 
 local source = debug.getinfo(1, "S").source
-local plugin_source_dir = source:match("^@(.+)/dictionary_manager%.lua$") or "."
-local DictionaryRegistry = dofile(plugin_source_dir .. "/dictionary_registry.lua")
+local module_dir = source:match("^@(.+)/dictionary_manager%.lua$") or "."
+local DictionaryRegistry = dofile(module_dir .. "/dictionary_registry.lua")
 
 local CATALOG_URL = "https://azac.github.io/tapless.dictionaries/catalog.json"
 local RELEASE_BASE_URL = "https://github.com/azac/tapless.dictionaries/releases/download/v"
