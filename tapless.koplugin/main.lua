@@ -6,6 +6,18 @@ local plugin_dir = source:match("^@(.+)/main%.lua$") or "."
 local virtualkeyboard_module = "ui/widget/virtualkeyboard"
 local replacement_path = plugin_dir .. "/virtualkeyboard.lua"
 
+local Screen = require("device").screen
+local modules = dofile(plugin_dir .. "/modules.lua")
+local OneHanded = dofile(plugin_dir .. "/" .. modules.one_handed)
+
+local function screenInfo()
+    return {
+        w = Screen:getWidth(),
+        h = Screen:getHeight(),
+        dpi = Screen:getDPI(),
+    }
+end
+
 -- KOReader loads plugin main files before normal text dialogs are created.
 -- Replace the module cache entry so future keyboard instances use the plugin
 -- implementation without modifying KOReader's installed core files.
@@ -216,6 +228,21 @@ function Tapless:addToMainMenu(menu_items)
                 callback = function()
                     G_reader_settings:flipNilOrTrue(
                         "tapless_tap_completions")
+                end,
+            },
+            {
+                text = "One-handed keyboard",
+                help_text = "Narrows the keys to one side of the screen, "
+                    .. "with buttons beside them to leave, move the keys "
+                    .. "to the other side, or resize them. Hold the globe "
+                    .. "key to switch it on or off while typing. Portrait "
+                    .. "and landscape are remembered separately.",
+                checked_func = function()
+                    return OneHanded:new(G_reader_settings)
+                        :state(screenInfo()).enabled
+                end,
+                callback = function()
+                    OneHanded:new(G_reader_settings):toggle(screenInfo())
                 end,
             },
         },
