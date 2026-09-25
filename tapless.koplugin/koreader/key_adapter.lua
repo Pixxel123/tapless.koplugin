@@ -289,8 +289,7 @@ function KeyAdapter:wrappers()
         onPanReleaseKey = function(original)
             return function(key, arg, ges)
                 local keyboard = key.keyboard
-                if adapter:finishSpaceCursor(keyboard, ges)
-                        or takeLift(keyboard) then
+                if adapter:finishSpaceCursor(keyboard, ges) then
                     return true
                 end
                 if keyboard and keyboard:isSwypeMvpEnabled()

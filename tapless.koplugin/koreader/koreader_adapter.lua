@@ -701,10 +701,14 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:onSwypeWordPanRelease(_, ges)
-        if self:_swypeTakeLift() then
-            return true
-        end
         return adapter.gesture_controller:onPanRelease(self, ges)
+    end
+
+    -- Catches the hold_release a hold always ends with, however far the
+    -- lift lands from the globe key. A key's own onHoldReleaseKey still
+    -- gets first refusal when the lift lands on it.
+    function VirtualKeyboard:onSwypeHoldRelease(_, ges)
+        return self:_swypeTakeLift()
     end
 
     function VirtualKeyboard:addChar(key, keep_swype_candidates)

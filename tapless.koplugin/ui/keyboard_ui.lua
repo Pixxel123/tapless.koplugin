@@ -80,6 +80,14 @@ function KeyboardUI:registerGestureRanges(keyboard)
             range = function() return self.screen:getSize() end,
         },
     }
+    -- KOReader always ends a hold with a hold_release, wherever the finger
+    -- lifts; a key catches it over its own dimen, this catches the rest.
+    keyboard.ges_events.SwypeHoldRelease = {
+        self.gesture_range:new{
+            ges = "hold_release",
+            range = function() return self.screen:getSize() end,
+        },
+    }
     keyboard.ges_events.SwypeWordSwipe = {
         self.gesture_range:new{
             ges = "swipe",

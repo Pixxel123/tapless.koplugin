@@ -444,14 +444,18 @@ it("switches one-handed mode on the lift after holding the globe key",
     T.eq(calls.stock_hold_release, 1, "next release is ordinary")
 end)
 
-it("switches on a lift that ends a slide after the hold", function()
+it("leaves a pending switch pending through a pan release", function()
     local calls, VirtualKey = setup()
     local keyboard = withPendingSwitch(newKeyboard(calls), calls)
     local key = VirtualKey:new{ key = "a", keyboard = keyboard }
+    -- A hold never yields a pan_release, so a pending switch must not be
+    -- taken here; the word release runs as usual and the switch waits for
+    -- the hold_release that always follows a hold.
     T.eq(key:onPanReleaseKey({}, { ges = "pan_release" }), true, "taken")
-    T.eq(calls.switched, 1, "switched")
-    T.eq(calls.tapless_pan_release, nil, "no word release")
-    T.eq(calls.stock_pan_release, nil, "no stock release")
+    T.eq(calls.switched, nil, "not switched")
+    T.eq(calls.tapless_pan_release, 1, "word release ran")
+    T.eq(key:onHoldReleaseKey(), true, "switch still pending")
+    T.eq(calls.switched, 1, "switched on the later hold release")
 end)
 
 it("leaves hold releases alone with no switch waiting", function()
