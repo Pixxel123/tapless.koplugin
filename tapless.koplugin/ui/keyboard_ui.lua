@@ -15,10 +15,6 @@ function KeyboardUI:new(options)
         ui_manager = assert(options.ui_manager),
         gesture_range = assert(options.gesture_range),
         screen = assert(options.screen),
-        line_widget = assert(options.line_widget),
-        geometry = assert(options.geometry),
-        blitbuffer = assert(options.blitbuffer),
-        size = assert(options.size),
     }, self)
 end
 
@@ -32,10 +28,6 @@ function KeyboardUI:createCandidateRow(keyboard, options)
         key_padding = options.key_padding,
         padding = options.padding,
         horizontal_padding = options.horizontal_padding,
-        separator = function(height)
-            return self:line(self.size.line.medium, height)
-        end,
-        separator_width = self.size.line.medium,
         handle = options.handle,
         candidates = keyboard.swype_mvp_session:getCandidates(),
         personal_offer = keyboard.swype_mvp_session:getPersonalOffer(),
@@ -73,18 +65,6 @@ function KeyboardUI:createCandidateRow(keyboard, options)
             return true
         end,
     }
-end
-
--- A thin light-grey line: between suggestions, and under their row.
-function KeyboardUI:line(width, height)
-    return self.line_widget:new{
-        background = self.blitbuffer.COLOR_LIGHT_GRAY,
-        dimen = self.geometry:new{ w = width, h = height },
-    }
-end
-
-function KeyboardUI:hairline(width, height)
-    return self:line(width, height)
 end
 
 function KeyboardUI:registerGestureRanges(keyboard)

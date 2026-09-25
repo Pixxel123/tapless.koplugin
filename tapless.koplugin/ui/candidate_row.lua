@@ -23,24 +23,15 @@ function CandidateRow:create(options)
     local keys = {}
     local candidates = options.candidates or {}
 
-    -- Between slots: a thin grey line, or the plain key gap.
-    local gap_width = options.separator and options.separator_width
-        or options.key_padding
-    local function gap()
-        if options.separator then
-            return options.separator(options.height)
-        end
-        return options.horizontal_padding
-    end
     local gaps = slot_count - 1 + (handle and 1 or 0)
     local candidate_width = math.floor(
         (options.width - 2 * options.padding - 2 * options.key_padding
-            - gaps * gap_width - (handle and handle.width or 0))
+            - gaps * options.key_padding - (handle and handle.width or 0))
         / slot_count)
 
     if handle and handle.side == "left" then
         table.insert(horizontal_group, handle.widget)
-        table.insert(horizontal_group, gap())
+        table.insert(horizontal_group, options.horizontal_padding)
     end
 
     for index = 1, slot_count do
@@ -87,12 +78,12 @@ function CandidateRow:create(options)
         table.insert(horizontal_group, virtual_key)
         table.insert(layout, virtual_key)
         if index ~= slot_count then
-            table.insert(horizontal_group, gap())
+            table.insert(horizontal_group, options.horizontal_padding)
         end
     end
 
     if handle and handle.side == "right" then
-        table.insert(horizontal_group, gap())
+        table.insert(horizontal_group, options.horizontal_padding)
         table.insert(horizontal_group, handle.widget)
     end
 

@@ -638,8 +638,8 @@ These are off by default:
   towards an option to run it. In resize mode the keys fade; drag a top
   corner to change width and height, a bottom corner to change width, or
   inside to move them, then tap Done. Portrait and landscape remember
-  their own place and size. The suggestion row, here and at full width,
-  is plain, with the top word in bold.
+  their own place and size. The top suggestion is in bold, here and at
+  full width.
 
 Tap the globe key (🌐) for the keyboard layout menu. Hold it and lift to
 switch one-handed mode on or off.
