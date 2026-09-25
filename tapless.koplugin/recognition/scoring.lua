@@ -34,6 +34,10 @@ local Scoring = {
     -- radians lend their neighbours: a corner cut short, not a key passed
     -- on the way.
     NEAR_KEY_MIN_TURN = 0.3,
+    -- On long swipes, a word may be missing inner letters the path never
+    -- crossed (fingers flatten long words); each costs this much, in the
+    -- units of a skipped swipe letter. Fitted on recorded long swipes.
+    MISSING_LETTER_COST = 2,
 }
 Scoring.__index = Scoring
 
@@ -335,9 +339,12 @@ function Scoring:matchScore(candidate, trace_chars, next_positions,
     return score, endpoint_mismatch, matched_positions
 end
 
+-- Marks, in the alignment's parents, a word letter left out.
+local MISSING = "missing"
+
 function Scoring:dynamicMatchScore(candidate, trace_chars,
         allow_endpoint_mismatch, trace_letter_points, endpoint_pos, key_centers,
-        observations, allow_start_mismatch, near)
+        observations, allow_start_mismatch, near, missing_cost)
     local trace_len = #trace_chars
     local candidate_len = #candidate
     if trace_len == 0 or candidate_len == 0 then
@@ -382,7 +389,8 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
     local first_letter_cost = first_trace_code ~= first_code
         and self.FIRST_LETTER_COST or 0
     -- parents[candidate_position][used][trace_position]: the layer the
-    -- letter was matched from, or false when the trace letter was skipped.
+    -- letter was matched from, false when the trace letter was skipped, or
+    -- MISSING when the word's letter was left out.
     local parents = {}
     local final_matches = {}
     for candidate_position = 1, candidate_len do
@@ -394,6 +402,9 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
         parents[candidate_position] = parent_layers
         local candidate_byte = string.byte(candidate, candidate_position)
         local candidate_code = candidate_byte - ASCII_A + 1
+        -- Only inner letters may be missing: the ends pick the word.
+        local may_miss = missing_cost ~= nil and candidate_position > 1
+            and candidate_position < candidate_len
         for trace_position = 1, trace_len do
             local trace_code = string.byte(trace_chars[trace_position])
                 - ASCII_A + 1
@@ -452,9 +463,19 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
                         matched = matched + geometry
                     end
                 end
-                if matched <= skipped then
+                -- The word's letter left out: the swipe never crossed it.
+                -- Without a cost this is false, not infinity: cells that
+                -- cannot be reached already hold more than infinity, and
+                -- comparing them against it would change their parents.
+                local missing = may_miss
+                    and previous[used][trace_position] + missing_cost
+                if matched <= skipped
+                        and (not missing or matched <= missing) then
                     current[used][trace_position] = matched
                     parent_layers[used][trace_position] = from
+                elseif missing and missing < skipped then
+                    current[used][trace_position] = missing
+                    parent_layers[used][trace_position] = MISSING
                 else
                     current[used][trace_position] = skipped
                     parent_layers[used][trace_position] = false
@@ -489,18 +510,24 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
         return 1000 + candidate_len * 20, false, {}
     end
 
-    local matched_positions = {}
+    local matched_positions, missing_letters = {}, 0
     local candidate_position = candidate_len
     local trace_position = best_end
     local used = best_used
     while candidate_position > 0 and trace_position > 0 do
         local from = parents[candidate_position][used][trace_position]
-        if from then
+        if from == MISSING then
+            -- The letter before it ended at this same trace position.
+            missing_letters = missing_letters + 1
+            candidate_position = candidate_position - 1
+        elseif from then
             matched_positions[candidate_position] = trace_position
             candidate_position = candidate_position - 1
             used = from
+            trace_position = trace_position - 1
+        else
+            trace_position = trace_position - 1
         end
-        trace_position = trace_position - 1
     end
     if candidate_position > 0 then
         return 1000 + candidate_position * 20, false, matched_positions
@@ -514,7 +541,7 @@ function Scoring:dynamicMatchScore(candidate, trace_chars,
     elseif string.byte(trace_chars[trace_len]) - ASCII_A + 1 ~= last_code then
         best_score = best_score + 4
     end
-    return best_score, endpoint_mismatch, matched_positions
+    return best_score, endpoint_mismatch, matched_positions, missing_letters
 end
 
 function Scoring:shortWordEndpointScore(trace, candidate)
@@ -641,20 +668,24 @@ function Scoring:scoreEntry(signature, entry, trace_chars, next_positions,
     return spatial_score, ranked_score, used_near
 end
 
+-- missing_cost: on long swipes, what each word letter the path never
+-- crossed costs; tried only when every letter cannot be matched.
 function Scoring:scoreEntryDynamic(signature, entry, trace_chars, trace_info,
         key_centers, allow_endpoint_mismatch, context_bonus,
-        allow_start_mismatch, near, uses)
+        allow_start_mismatch, near, uses, missing_cost)
     local candidate = entry.gesture_signature or entry.signature
+    local letter_points = trace_info and trace_info.letter_points
+    local endpoint_pos = trace_info and trace_info.endpoint_pos
+    local observations = trace_info and trace_info.observations
     local score, _, matched_positions = self:dynamicMatchScore(
-        candidate,
-        trace_chars,
-        allow_endpoint_mismatch,
-        trace_info and trace_info.letter_points,
-        trace_info and trace_info.endpoint_pos,
-        key_centers,
-        trace_info and trace_info.observations,
-        allow_start_mismatch,
-        near)
+        candidate, trace_chars, allow_endpoint_mismatch, letter_points,
+        endpoint_pos, key_centers, observations, allow_start_mismatch, near)
+    if score >= 1000 and missing_cost then
+        score, _, matched_positions = self:dynamicMatchScore(
+            candidate, trace_chars, allow_endpoint_mismatch, letter_points,
+            endpoint_pos, key_centers, observations, allow_start_mismatch,
+            near, missing_cost)
+    end
     return self:finishEntryScore(signature, entry, score, matched_positions,
         trace_info, context_bonus, uses)
 end
