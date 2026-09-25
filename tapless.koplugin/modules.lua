@@ -7,7 +7,8 @@
 --   recognition/  finding the words a swipe or tapped letters could be
 --   learning/     the words and word pairs the user keeps
 --   dictionary/   reading, installing and managing word lists
---   ui/           drawing the suggestion row and the swipe trail
+--   ui/           drawing the suggestion row, the swipe trail and the
+--                 one-handed keyboard's layout
 --
 -- The word lists themselves are data, in dictionaries/.
 return {
@@ -45,4 +46,5 @@ return {
     keyboard_ui = "ui/keyboard_ui.lua",
     candidate_row = "ui/candidate_row.lua",
     trace_renderer = "ui/trace_renderer.lua",
+    one_handed = "ui/one_handed.lua",
 }

@@ -1,0 +1,249 @@
+-- One-handed keyboard mode: whether it is on, and where the keys block
+-- sits and how big it is. Sizes are in millimetres, so a thumb's reach is
+-- the same on any screen; portrait and landscape each keep their own.
+-- A screen is { w = px, h = px, dpi = dots per inch }.
+local OneHanded = {
+    SETTING = "tapless_one_handed",
+    MIN_WIDTH = 64,
+    MAX_WIDTH = 92,
+    DEFAULT_WIDTH = 68,
+    -- Always left beside the keys, so a panel button fits.
+    PANEL_ROOM = 12,
+    MIN_HEIGHT = 45,
+    MAX_HEIGHT = 75,
+    -- Of the screen height, so a dialog keeps room above in landscape.
+    MAX_HEIGHT_SHARE = 0.55,
+    SNAP = 3,
+    BUTTON = 19,
+    -- Shown in the corner of the globe key, whose hold switches the mode.
+    HINT = "⇲",
+}
+OneHanded.__index = OneHanded
+
+function OneHanded:new(settings)
+    return setmetatable({ settings = assert(settings) }, self)
+end
+
+local function clamp(value, low, high)
+    return math.max(low, math.min(high, value))
+end
+
+local function round(value)
+    return math.floor(value + 0.5)
+end
+
+local function number(value)
+    if type(value) == "number" and value == value then
+        return value
+    end
+end
+
+local function tenth(value)
+    return value and round(value * 10) / 10
+end
+
+local function orientation(screen)
+    return screen.w > screen.h and "landscape" or "portrait"
+end
+
+function OneHanded.toMM(px, screen)
+    return px * 25.4 / screen.dpi
+end
+
+function OneHanded.toPx(mm, screen)
+    return round(mm * screen.dpi / 25.4)
+end
+
+function OneHanded.limits(screen)
+    local screen_w = OneHanded.toMM(screen.w, screen)
+    local screen_h = OneHanded.toMM(screen.h, screen)
+    local max_w = math.min(OneHanded.MAX_WIDTH,
+        screen_w - OneHanded.PANEL_ROOM)
+    local max_h = math.min(OneHanded.MAX_HEIGHT,
+        screen_h * OneHanded.MAX_HEIGHT_SHARE)
+    return {
+        screen_w = screen_w,
+        min_w = math.min(OneHanded.MIN_WIDTH, max_w),
+        max_w = max_w,
+        min_h = math.min(OneHanded.MIN_HEIGHT, max_h),
+        max_h = max_h,
+    }
+end
+
+-- Keeps a keys block inside the limits and on screen. A missing left
+-- means against the right edge; a missing height, the keyboard's normal
+-- height.
+function OneHanded.fit(block, screen)
+    local limits = OneHanded.limits(screen)
+    local width = clamp(number(block.width) or OneHanded.DEFAULT_WIDTH,
+        limits.min_w, limits.max_w)
+    local height = number(block.height)
+    if height then
+        height = clamp(height, limits.min_h, limits.max_h)
+    end
+    local left = number(block.left) or limits.screen_w - width
+    left = clamp(left, 0, limits.screen_w - width)
+    return { left = left, width = width, height = height }
+end
+
+function OneHanded:state(screen)
+    local saved = self.settings:readSetting(self.SETTING)
+    local entry = type(saved) == "table" and saved[orientation(screen)]
+    if type(entry) ~= "table" then
+        entry = {}
+    end
+    local state = OneHanded.fit({
+        left = entry.left_mm,
+        width = entry.width_mm,
+        height = entry.height_mm,
+    }, screen)
+    state.enabled = entry.enabled == true
+    return state
+end
+
+-- Lets change edit this orientation's state, then saves it.
+function OneHanded:update(screen, change)
+    local state = self:state(screen)
+    change(state)
+    local block = OneHanded.fit(state, screen)
+    local saved = self.settings:readSetting(self.SETTING)
+    if type(saved) ~= "table" then
+        saved = {}
+    end
+    saved[orientation(screen)] = {
+        enabled = state.enabled == true,
+        left_mm = tenth(block.left),
+        width_mm = tenth(block.width),
+        height_mm = tenth(block.height),
+    }
+    self.settings:saveSetting(self.SETTING, saved)
+    return self:state(screen)
+end
+
+function OneHanded:setEnabled(screen, enabled)
+    return self:update(screen, function(state)
+        state.enabled = enabled
+    end)
+end
+
+function OneHanded:toggle(screen)
+    return self:update(screen, function(state)
+        state.enabled = not state.enabled
+    end)
+end
+
+-- Turns the mode on with the keys block where block says.
+function OneHanded:saveBlock(screen, block)
+    return self:update(screen, function(state)
+        state.enabled = true
+        state.left = block.left
+        state.width = block.width
+        state.height = block.height
+    end)
+end
+
+-- The edge the keys would move to: the one farther from their centre.
+function OneHanded.target(block, screen)
+    local centre = block.left + block.width / 2
+    return centre > OneHanded.toMM(screen.w, screen) / 2 and "left" or "right"
+end
+
+function OneHanded.toEdge(block, screen, edge)
+    local screen_w = OneHanded.toMM(screen.w, screen)
+    return OneHanded.fit({
+        left = edge == "left" and 0 or screen_w - block.width,
+        width = block.width,
+        height = block.height,
+    }, screen)
+end
+
+function OneHanded:moveToTarget(screen)
+    return self:update(screen, function(state)
+        local target = OneHanded.target(state, screen)
+        state.left = OneHanded.toEdge(state, screen, target).left
+    end)
+end
+
+function OneHanded.snap(block, screen)
+    local fitted = OneHanded.fit(block, screen)
+    local screen_w = OneHanded.toMM(screen.w, screen)
+    if fitted.left < OneHanded.SNAP then
+        fitted.left = 0
+    end
+    if screen_w - fitted.left - fitted.width < OneHanded.SNAP then
+        fitted.left = screen_w - fitted.width
+    end
+    return fitted
+end
+
+-- The draft after dragging grip dx, dy millimetres from start. Top corners
+-- set width and height, bottom corners the width only, keeping the
+-- opposite edges where they are; "move" slides the keys along the bottom.
+-- start.height must be set.
+function OneHanded.drag(start, grip, dx, dy, screen)
+    local limits = OneHanded.limits(screen)
+    local block = {
+        left = start.left,
+        width = start.width,
+        height = start.height,
+    }
+    if grip == "move" then
+        block.left = start.left + dx
+    else
+        if grip == "tl" or grip == "bl" then
+            local right = start.left + start.width
+            block.width = clamp(start.width - dx, limits.min_w,
+                math.min(limits.max_w, right))
+            block.left = right - block.width
+        else
+            block.width = clamp(start.width + dx, limits.min_w,
+                math.min(limits.max_w, limits.screen_w - start.left))
+        end
+        if grip == "tl" or grip == "tr" then
+            block.height = clamp(start.height - dy, limits.min_h,
+                limits.max_h)
+        end
+    end
+    return OneHanded.snap(block, screen)
+end
+
+-- Back to the default width and the normal height, against whichever edge
+-- the keys are nearer.
+function OneHanded.reset(block, screen, normal_height)
+    local nearer = OneHanded.target(block, screen) == "left"
+        and "right" or "left"
+    local fresh = OneHanded.fit({
+        width = OneHanded.DEFAULT_WIDTH,
+        height = normal_height,
+    }, screen)
+    return OneHanded.toEdge(fresh, screen, nearer)
+end
+
+-- The keys block and the two strips beside it in pixels, for a keyboard
+-- whose inner area starts inset px from the screen's left edge and is
+-- inner_w px wide. The side panel takes the wider strip.
+function OneHanded.layout(block, screen, inset, inner_w)
+    local keys_w = math.min(OneHanded.toPx(block.width, screen), inner_w)
+    local before = clamp(OneHanded.toPx(block.left, screen) - inset,
+        0, inner_w - keys_w)
+    local after = inner_w - keys_w - before
+    local panel_first = before >= after
+    return {
+        keys_w = keys_w,
+        before = before,
+        after = after,
+        panel_w = panel_first and before or after,
+        panel_side = panel_first and "left" or "right",
+    }
+end
+
+-- The side of a square panel button: 19 mm, or less when the strip or the
+-- keyboard's inner height can't hold three with key padding between.
+function OneHanded.buttonSize(screen, strip_w, inner_h, key_padding)
+    return math.max(1, math.floor(math.min(
+        OneHanded.toPx(OneHanded.BUTTON, screen),
+        strip_w,
+        (inner_h - 2 * key_padding) / 3)))
+end
+
+return OneHanded
