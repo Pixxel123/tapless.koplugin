@@ -10,6 +10,7 @@ local function newController(settings, clock, usage_model)
     return InputController:new(context_model, T.normalization, logger, {}, {},
         {}, ui_manager, {
             isTrue = function(_, name) return settings[name] == true end,
+            nilOrTrue = function(_, name) return settings[name] ~= false end,
         }, nil, clock and {
             now = function() return clock.now end,
             ms = function(ms) return ms * 1000 end,

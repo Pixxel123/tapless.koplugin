@@ -292,6 +292,34 @@ function DictionaryStore:loadBucket(first, last, dictionary)
     return bucket
 end
 
+-- Reads a word list a slice at a time, at most max_entries entries or
+-- max_work_ms milliseconds per call, for callers that must not wait; true
+-- once it is loaded. A list read this way, or one a swipe's prefetch read,
+-- stays loaded when that prefetch is cancelled.
+function DictionaryStore:loadBucketSlice(first, last, dictionary, max_entries,
+        max_work_ms)
+    dictionary = dictionary or "en"
+    local key = first .. last
+    local jobs = self.prefetch_jobs[dictionary]
+    local job = jobs and jobs[key]
+    if job and job.cancelled then
+        jobs[key] = nil
+        job = nil
+    end
+    if job then
+        job.used = true
+    end
+    if self:isBucketLoaded(dictionary, key) then
+        return true
+    end
+    job = job or self:startPrefetch(first, last, dictionary)
+    if not job then
+        return true
+    end
+    job.used = true
+    return self:advancePrefetch(job, max_entries, max_work_ms)
+end
+
 function DictionaryStore:loadFirstBuckets(first, dictionary)
     dictionary = dictionary or "en"
     self.first_bucket_cache[dictionary] = self.first_bucket_cache[dictionary] or {}

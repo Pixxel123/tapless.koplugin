@@ -6,9 +6,12 @@ InputController.DOUBLE_SPACE_SETTING = "tapless_double_space_period"
 -- Suggest words that complete a word being tapped out. On unless turned
 -- off.
 InputController.COMPLETION_SETTING = "tapless_tap_completions"
--- How long a word list the completions need waits to be read from disk,
--- one list at a time, so typing never stalls for all of them at once.
-InputController.WARM_STEP_DELAY = 0.05
+-- The word lists completions need are read a slice at a time: this many
+-- entries or milliseconds per slice, a slice every WARM_STEP_DELAY
+-- seconds, so typing never waits for them.
+InputController.WARM_STEP_DELAY = 0.02
+InputController.WARM_BATCH = 96
+InputController.WARM_WORK_MS = 3
 
 -- What a word picked from the suggestions counts for in the usage model. A
 -- word swiped and left in the text counts for one.
@@ -93,8 +96,8 @@ function InputController:_schedulePersonalOffer(keyboard, completed)
         local session = keyboard.swype_mvp_session
         if keyboard.swype_mvp_closed
                 or keyboard.swype_mvp_personal_offer_generation ~= generation
-                or (session:getCandidates() and not (session.getCompletion
-                    and session:getCompletion())) then
+                or (session:getCandidates()
+                    and not session:getCompletion()) then
             return
         end
         -- Mid-word, words completing it come first; the offer to add the
@@ -102,8 +105,7 @@ function InputController:_schedulePersonalOffer(keyboard, completed)
         if not completed and self:_showCompletions(keyboard) then
             return
         end
-        local had_completions = session.clearCompletions
-            and session:clearCompletions()
+        local had_completions = session:clearCompletions()
         local text = keyboard.inputbox and keyboard.inputbox.getText
             and keyboard.inputbox:getText() or ""
         self:_setPersonalOffer(keyboard, self:_wordAtEnd(
@@ -178,24 +180,38 @@ function InputController:deleteText(keyboard, text)
     end
 end
 
+-- The word a next word is taken to follow: the last run of letters before
+-- any trailing spaces, lowercased. Nothing when punctuation or a digit
+-- ends the text.
+local function lastWord(text)
+    local word = text:match("([^%s%p%d]+)%s*$")
+    return word and Utf8Proc.lowercase_dumb(word) or nil
+end
+
+-- Characters that join letters into one word: "don't", "well-known",
+-- "3rd". Letters after one are no word of their own.
+local function joinsWord(char)
+    return char == "'" or char == "’" or char == "-"
+        or char:match("^%d$") ~= nil
+end
+
+-- How much text before the cursor is read to find the word being typed
+-- and the one before it.
+local CURSOR_CONTEXT = 80
+local MAX_WORD_LETTERS = 32
+
 function InputController:getPreviousWord(keyboard)
     if not keyboard.inputbox or not keyboard.inputbox.getText then
         return
     end
-    local text = keyboard.inputbox:getText() or ""
-    local word = text:match("([^%s%p%d]+)%s*$")
-    if word and #word > 0 then
-        return Utf8Proc.lowercase_dumb(word)
-    end
+    return lastWord(keyboard.inputbox:getText() or "")
 end
 
 -- What word earns for following previous_word: learned from the user's
 -- own text, and from the dictionary's word-pair table.
 function InputController:contextBonus(previous_word, word, dictionary)
-    local store = self.dictionary_store
-    local pair_bonus = store.pairBonus
-        and store:pairBonus(previous_word, word, dictionary) or 0
-    return self.context_model:bonus(previous_word, word, pair_bonus)
+    return self.context_model:bonus(previous_word, word,
+        self.dictionary_store:pairBonus(previous_word, word, dictionary))
 end
 
 function InputController:learnContext(previous_word, word)
@@ -210,73 +226,53 @@ end
 -- input method layouts (Chinese, Japanese, Korean, Vietnamese) the letters
 -- tapped are still being composed into other characters.
 function InputController:_completionsEnabled(keyboard)
-    if keyboard.uwrap_func then
-        return false
-    end
-    local settings = self.settings
-    if settings.nilOrTrue then
-        return settings:nilOrTrue(self.COMPLETION_SETTING)
-    end
-    return true
+    return not keyboard.uwrap_func
+        and self.settings:nilOrTrue(self.COMPLETION_SETTING)
 end
 
--- The word the cursor ends, as typed, and the word before it, lowercased,
--- when only spaces lie between them, as the keyboard sees a previous
--- word. Nothing when the cursor is not at the end of a word.
+-- The word the cursor ends, as typed, and the word before it as swipes
+-- see one (lastWord), when only spaces lie between them. Nothing when the
+-- cursor is not at the end of a word, or the word is joined to the text
+-- before it.
 function InputController:_wordAtCursor(keyboard)
     local inputbox = keyboard.inputbox
-    if not inputbox or not inputbox.getChar then
+    -- KOReader releases without InputText:getChar cannot say.
+    if not inputbox.getChar then
         return
     end
     local profile = keyboard.swype_mvp_normalization_profile
-    local function letterAt(offset)
+    local function isLetter(char)
+        return char ~= nil
+            and self.normalization:normalizeChar(char, profile) ~= nil
+    end
+    if isLetter(inputbox:getChar(0)) then
+        return
+    end
+    local before = {}
+    for offset = -1, -CURSOR_CONTEXT, -1 do
         local char = inputbox:getChar(offset)
-        if char and self.normalization:normalizeChar(char, profile) then
-            return char
+        if not char then
+            break
         end
+        table.insert(before, 1, char)
     end
-    if letterAt(0) then
+    local start = #before + 1
+    while start > 1 and isLetter(before[start - 1]) do
+        start = start - 1
+    end
+    local length = #before - start + 1
+    if length == 0 or length > MAX_WORD_LETTERS
+            or (before[start - 1] and joinsWord(before[start - 1])) then
         return
     end
-    local offset = -1
-    local function word()
-        local letters = {}
-        while #letters < 32 and letterAt(offset) do
-            table.insert(letters, 1, letterAt(offset))
-            offset = offset - 1
-        end
-        return #letters > 0 and table.concat(letters) or nil
-    end
-    local typed = word()
-    if not typed then
-        return
-    end
-    local spaces = 0
-    while (inputbox:getChar(offset) or ""):match("^%s$") do
-        spaces = spaces + 1
-        offset = offset - 1
-    end
-    local previous_word = spaces > 0 and word()
-    return typed, previous_word and Utf8Proc.lowercase_dumb(previous_word)
-        or nil
-end
-
--- The letters of typed as a signature: normalised, lowercase a to z.
-function InputController:_signature(keyboard, typed)
-    local profile = keyboard.swype_mvp_normalization_profile
-    local letters = {}
-    for _, char in ipairs(self.normalization:splitChars(typed)) do
-        letters[#letters + 1] = self.normalization:normalizeChar(char, profile)
-    end
-    return table.concat(letters)
+    local rest = table.concat(before, "", 1, start - 1)
+    return table.concat(before, "", start),
+        rest:match("%s$") and lastWord(rest) or nil
 end
 
 -- Gives completions the capitals typed: "Th" completes to "The", "TH" to
 -- "THE".
 function InputController:_applyTypedCase(keyboard, candidates, typed)
-    if not (self.text_case and self.text_case.apply) then
-        return
-    end
     local chars = self.normalization:splitChars(typed)
     local capitals = 0
     for _, char in ipairs(chars) do
@@ -299,26 +295,24 @@ end
 -- Shows words completing the word being tapped out; false when there are
 -- none to show.
 function InputController:_showCompletions(keyboard)
-    if not self:_completionsEnabled(keyboard)
-            or not keyboard._swypeCompleteWord then
+    if not self:_completionsEnabled(keyboard) then
         return false
     end
     local typed, previous_word = self:_wordAtCursor(keyboard)
     if not typed then
         return false
     end
-    local prefix = self:_signature(keyboard, typed)
-    local candidates = keyboard:_swypeCompleteWord(prefix, typed,
-        previous_word, 4)
-    if not candidates or #candidates == 0 then
+    local prefix = self.normalization:normalizeText(typed,
+        keyboard.swype_mvp_normalization_profile)
+    local candidates = keyboard:_swypeCompleteWord(prefix,
+        Utf8Proc.lowercase_dumb(typed), previous_word, 4)
+    if #candidates == 0 then
         return false
     end
     self:_applyTypedCase(keyboard, candidates, typed)
-    self:commitPendingContext(keyboard)
     keyboard.swype_mvp_session:setCompletions(candidates, {
         inputbox = keyboard.inputbox,
         prefix = prefix,
-        previous_word = previous_word,
     })
     keyboard:_swypeRefreshCandidateRow()
     return true
@@ -330,7 +324,8 @@ end
 -- it, or nothing is typed.
 function InputController:_selectCompletion(keyboard, candidate, completion)
     local typed, previous_word = self:_wordAtCursor(keyboard)
-    local prefix = typed and self:_signature(keyboard, typed) or ""
+    local prefix = typed and self.normalization:normalizeText(typed,
+        keyboard.swype_mvp_normalization_profile) or ""
     if not typed or completion.inputbox ~= keyboard.inputbox
             or prefix:sub(1, #completion.prefix) ~= completion.prefix
             or (candidate.signature or ""):sub(1, #prefix) ~= prefix then
@@ -345,7 +340,7 @@ function InputController:_selectCompletion(keyboard, candidate, completion)
         self.usage_model:learn(candidate.word, self.PICK_USES)
     end
     keyboard.inputbox:addChars(candidate.output_word or candidate.word)
-    keyboard.swype_mvp_tapped_word = false
+    keyboard.swype_mvp_tapped_word = nil
     self:_markPendingSpace(keyboard)
     self:clearCandidateState(keyboard)
     keyboard:_swypeRefreshCandidateRow()
@@ -353,45 +348,51 @@ end
 
 -- A word tapped out letter by letter and ended with a space or
 -- punctuation is learned like a swiped word left in the text, when it is
--- a dictionary or personal word, so typos are not.
+-- a dictionary or personal word, so typos are not. Looking it up may read
+-- a word list from disk, so that waits until the key is handled.
 function InputController:_learnTappedWord(keyboard)
-    local personal = self.personal_dictionary
-    local store = self.dictionary_store
-    if keyboard.uwrap_func
-            or not (personal.prepareWord and store.containsWord) then
+    if keyboard.uwrap_func then
         return
     end
     local typed, previous_word = self:_wordAtCursor(keyboard)
+    if not typed then
+        return
+    end
     local profile = keyboard.swype_mvp_normalization_profile
     local language = keyboard.swype_mvp_dictionary or "en"
-    local word, signature = personal:prepareWord(typed, profile)
-    if not word or not (store:containsWord(signature, word, language)
-            or personal:contains(language, word, profile)) then
-        return
-    end
-    self.logger.dbg("swype mvp learned tapped word", word)
-    self:learnContext(previous_word, word)
-    if self.usage_model then
-        self.usage_model:learn(word, 1)
-    end
+    self.ui_manager:scheduleIn(0, function()
+        local personal = self.personal_dictionary
+        local word, signature = personal:prepareWord(typed, profile)
+        if not word or not (self.dictionary_store:containsWord(
+                    signature, word, language)
+                or personal:contains(language, word, profile)) then
+            return
+        end
+        self.logger.dbg("swype mvp learned tapped word", word)
+        self:learnContext(previous_word, word)
+        if self.usage_model then
+            self.usage_model:learn(word, 1)
+        end
+    end)
 end
 
--- Reads the word lists for words starting with first, one per step, so
--- completions can look beyond the most common words without typing ever
--- waiting for the disk. Waits while a swipe is being drawn.
+-- Reads the word lists for words starting with first in small slices, a
+-- few milliseconds each, so completions can look beyond the most common
+-- words without typing waiting for the disk. Waits while a swipe is being
+-- drawn, and stops if the keyboard closes or changes language.
 function InputController:_warmCompletionLists(keyboard, first)
-    local store = self.dictionary_store
-    if not (first and store.isBucketLoaded and store.loadBucket
-            and self:_completionsEnabled(keyboard)) then
+    if not self:_completionsEnabled(keyboard) then
         return
     end
+    local store = self.dictionary_store
     keyboard.swype_mvp_completion_warm =
         (keyboard.swype_mvp_completion_warm or 0) + 1
     local generation = keyboard.swype_mvp_completion_warm
     local dictionary = keyboard.swype_mvp_dictionary or "en"
     local function step()
         if keyboard.swype_mvp_closed
-                or keyboard.swype_mvp_completion_warm ~= generation then
+                or keyboard.swype_mvp_completion_warm ~= generation
+                or (keyboard.swype_mvp_dictionary or "en") ~= dictionary then
             return
         end
         if keyboard.swype_mvp_trace then
@@ -400,8 +401,12 @@ function InputController:_warmCompletionLists(keyboard, first)
         end
         for code = string.byte("a"), string.byte("z") do
             local last = string.char(code)
-            if not store:isBucketLoaded(dictionary, first .. last) then
-                store:loadBucket(first, last, dictionary)
+            local loaded = store:isBucketLoaded(dictionary, first .. last)
+            -- Also keeps a list a swipe's prefetch read, should that
+            -- prefetch be cancelled.
+            store:loadBucketSlice(first, last, dictionary,
+                self.WARM_BATCH, self.WARM_WORK_MS)
+            if not loaded then
                 self.ui_manager:scheduleIn(self.WARM_STEP_DELAY, step)
                 return
             end
@@ -459,7 +464,7 @@ end
 -- did not choose it.
 function InputController:selectCandidate(keyboard, candidate, uses)
     local session = keyboard.swype_mvp_session
-    local completion = session.getCompletion and session:getCompletion()
+    local completion = session:getCompletion()
     if completion then
         return self:_selectCompletion(keyboard, candidate, completion)
     end
@@ -556,7 +561,7 @@ function InputController:insertBestAndShowCandidates(
     end
     self:applyCandidateCase(keyboard, candidates)
     -- The swiped word is learned once it is kept, not as a tapped word.
-    keyboard.swype_mvp_tapped_word = false
+    keyboard.swype_mvp_tapped_word = nil
     local inserted = keyboard.swype_mvp_session:recordInsert(
         signature, candidates, previous_word)
     self.logger.dbg("swype mvp best", signature, "=>", candidates[1].word)
@@ -698,17 +703,21 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
             or key:match("^%d$")) then
         keyboard.swype_mvp_last_letter_tap = self.time.now()
     end
-    -- A space or punctuation ends a word tapped out letter by letter. An
-    -- apostrophe or hyphen ends only part of one ("don't", "well-known"),
-    -- which is not learned.
+    -- A space or punctuation ends a word tapped out letter by letter, if
+    -- the cursor is still where the last letter was typed. An apostrophe
+    -- or hyphen ends only part of one ("don't", "well-known"), which is not
+    -- learned.
+    local inputbox = keyboard.inputbox
+    local tapped = keyboard.swype_mvp_tapped_word
     local first_char = self.normalization:splitChars(key or "")[1]
-    if keyboard.swype_mvp_tapped_word and first_char
+    if tapped and first_char
             and not self.normalization:normalizeChar(first_char, profile) then
-        if first_char:match("^[%s%p]$") and first_char ~= "'"
-                and first_char ~= "-" then
+        keyboard.swype_mvp_tapped_word = nil
+        if first_char:match("^[%s%p]$") and not joinsWord(first_char)
+                and tapped.inputbox == inputbox
+                and tapped.charpos == inputbox.charpos then
             self:_learnTappedWord(keyboard)
         end
-        keyboard.swype_mvp_tapped_word = false
     end
     local pending_space = self:_takePendingSpace(keyboard)
     local keep_pending_space = false
@@ -747,27 +756,39 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
     -- Completions stay until typing pauses and they are brought up to
     -- date, saving a screen refresh per letter.
     if not keep_swype_candidates and session:getCandidates()
-            and not (session.getCompletion and session:getCompletion()) then
+            and not session:getCompletion() then
         self:clearCandidateRow(keyboard)
     end
-    -- A letter after anything but a letter starts a tapped word.
+    -- A letter after a space, punctuation or nothing starts a tapped word;
+    -- a letter typed where the last one was continues it.
     local key_chars = self.normalization:splitChars(key or "")
     local key_last = key_chars[#key_chars]
-    local first_letter = key_last
+    local letter = key_last
         and self.normalization:normalizeChar(key_last, profile)
-    if first_letter then
+    local starts_word = false
+    if letter then
         local before = key_chars[#key_chars - 1]
-        if not before and keyboard.inputbox.getChar then
-            before = keyboard.inputbox:getChar(-1)
-        end
-        if not before
-                or not self.normalization:normalizeChar(before, profile) then
-            keyboard.swype_mvp_tapped_word = true
-            self:_warmCompletionLists(keyboard, first_letter)
-        end
+            or (inputbox.getChar and inputbox:getChar(-1))
+        starts_word = not before
+            or not (self.normalization:normalizeChar(before, profile)
+                or joinsWord(before))
     end
+    local charpos = inputbox.charpos
     self.logger.dbg("add char", key)
-    keyboard.inputbox:addChars(key)
+    inputbox:addChars(key)
+    tapped = keyboard.swype_mvp_tapped_word
+    if starts_word then
+        keyboard.swype_mvp_tapped_word = {
+            inputbox = inputbox,
+            charpos = inputbox.charpos,
+        }
+        self:_warmCompletionLists(keyboard, letter)
+    elseif letter and tapped and tapped.inputbox == inputbox
+            and tapped.charpos == charpos then
+        tapped.charpos = inputbox.charpos
+    elseif letter then
+        keyboard.swype_mvp_tapped_word = nil
+    end
     if key == " " then
         self:_markSpace(keyboard)
     end
@@ -783,7 +804,7 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
         self:_afterManualEdit(keyboard, true)
     else
         self:_clearPersonalOffer(keyboard)
-        if session.clearCompletions and session:clearCompletions() then
+        if session:clearCompletions() then
             keyboard:_swypeRefreshCandidateRow()
         end
     end
@@ -796,7 +817,20 @@ function InputController:delChar(keyboard)
         return
     end
     self.logger.dbg("delete char")
-    keyboard.inputbox:delChar()
+    local inputbox = keyboard.inputbox
+    local tapped = keyboard.swype_mvp_tapped_word
+    local charpos = inputbox.charpos
+    inputbox:delChar()
+    -- Backspace within a tapped word keeps it one; once the word is gone,
+    -- what is left before the cursor was not tapped here.
+    local previous = inputbox.getChar and inputbox:getChar(-1)
+    if tapped and tapped.inputbox == inputbox and tapped.charpos == charpos
+            and previous and self.normalization:normalizeChar(previous,
+                keyboard.swype_mvp_normalization_profile) then
+        tapped.charpos = inputbox.charpos
+    else
+        keyboard.swype_mvp_tapped_word = nil
+    end
     self:_afterManualEdit(keyboard, false)
 end
 

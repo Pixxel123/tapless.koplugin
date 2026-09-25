@@ -182,6 +182,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     function VirtualKeyboard:onCloseWidget()
         self.swype_mvp_closed = true
         self.swype_mvp_pending_space = nil
+        self.swype_mvp_tapped_word = nil
         self:_swypeReset()
         adapter.dictionary_controller:stopWarmUp(self)
         self:_swypeCancelBucketPrefetch()
@@ -275,7 +276,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     -- Words completing a tapped-out word: prefix is its letters as a
-    -- signature, typed the word as typed.
+    -- signature, typed the word as typed, lowercased.
     function VirtualKeyboard:_swypeCompleteWord(prefix, typed, previous_word,
             limit)
         return adapter.recognition_engine:completeWord{

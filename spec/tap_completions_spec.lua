@@ -34,6 +34,17 @@ end
 local WORDS = { "hello", "help", "helmet", "the", "there", "their", "then",
     "world", "would", "word", "say" }
 
+-- The helper's normalization, but normalizing whole words too.
+local normalization = setmetatable({
+    normalizeText = function(self, text)
+        local letters = {}
+        for _, char in ipairs(self:splitChars(text)) do
+            letters[#letters + 1] = self:normalizeChar(char)
+        end
+        return table.concat(letters)
+    end,
+}, { __index = T.normalization })
+
 -- A controller and keyboard typing into a fake text box. Completions come
 -- from WORDS, in order; learning and timers are recorded.
 local function setup(options)
@@ -60,13 +71,16 @@ local function setup(options)
     for _, word in ipairs(WORDS) do known[word] = true end
     local personal = {
         prepareWord = function(_, word)
-            if #word < 2 then return end
+            if type(word) ~= "string" or #word < 2 then return end
             return word:lower(), word:lower()
         end,
         contains = function() return false end,
     }
+    -- Every word list counts as loaded already.
     local store = {
         containsWord = function(_, _, word) return known[word] == true end,
+        isBucketLoaded = function() return true end,
+        loadBucketSlice = function() return true end,
     }
     local text_case = {
         apply = function(_, word, mode)
@@ -84,7 +98,7 @@ local function setup(options)
             return not (options.off and name == "tapless_tap_completions")
         end,
     }
-    local controller = InputController:new(context_model, T.normalization,
+    local controller = InputController:new(context_model, normalization,
         { dbg = noop, warn = noop }, text_case, personal, store, ui_manager,
         settings, nil, nil, usage_model)
     local keyboard = {
@@ -191,6 +205,7 @@ it("learns a picked completion after the word before it", function()
     T.eq(state.pairs[#state.pairs], "say hello")
     T.eq(state.uses.hello, 2, "a pick counts double")
     state.type(" ")
+    state.pause()
     T.eq(state.uses.hello, 2, "not learned again as a tapped word")
 end)
 
@@ -237,6 +252,8 @@ it("learns a word tapped out and ended with a space or punctuation",
         function()
     local _, _, state = setup()
     state.type("s", "a", "y", " ", "h", "e", "l", "l", "o", ",")
+    T.eq(state.uses.hello, nil, "looked up once the key is handled")
+    state.pause()
     T.eq(state.uses.hello, 1)
     T.eq(state.pairs[#state.pairs], "say hello")
     T.eq(state.uses.say, 1)
@@ -246,24 +263,31 @@ end)
 it("does not learn a typo or a swiped word as a tapped one", function()
     local controller, keyboard, state = setup()
     state.type("h", "e", "l", "o", " ")
+    state.pause()
     T.eq(state.uses.helo, nil, "not a dictionary word")
     controller.applyCandidateCase = noop
     controller:insertBestAndShowCandidates(keyboard, "wd",
         { { word = "world" } })
     state.type(" ")
+    state.pause()
     T.eq(state.uses.world, nil, "a swiped word is learned when committed")
 end)
 
-it("does not learn part of a word before an apostrophe or hyphen",
+it("does not learn either part of a word joined by an apostrophe or hyphen",
         function()
-    WORDS[#WORDS + 1] = "don" -- a word too, so only the apostrophe stops it
+    -- All words too, so only the joining mark stops them.
+    for _, word in ipairs({ "don", "re", "well", "known" }) do
+        WORDS[#WORDS + 1] = word
+    end
     local _, _, state = setup()
-    table.remove(WORDS)
-    state.type("d", "o", "n", "'", "t", " ")
+    for _ = 1, 4 do table.remove(WORDS) end
+    state.type("d", "o", "n", "'", "t", " ", "t", "h", "e", "y", "'", "r",
+        "e", " ", "w", "e", "l", "l", "-", "k", "n", "o", "w", "n", " ")
+    state.pause()
     T.eq(state.uses.don, nil)
-    T.eq(state.uses.t, nil)
-    state.type("h", "e", "l", "l", "o", "-")
-    T.eq(state.uses.hello, nil)
+    T.eq(state.uses.re, nil)
+    T.eq(state.uses.well, nil)
+    T.eq(state.uses.known, nil)
 end)
 
 it("leaves input method layouts alone", function()
@@ -273,6 +297,7 @@ it("leaves input method layouts alone", function()
     state.pause()
     T.eq(state.row(), "", "no completions")
     state.type("l", "l", "o", " ")
+    state.pause()
     T.eq(state.uses.hello, nil, "not learned")
 end)
 
@@ -283,26 +308,92 @@ it("offers no completions with the option off", function()
     T.eq(state.row(), "")
 end)
 
-it("reads a first letter's word lists one at a time", function()
+-- Word lists wa, wb and wc still to read, each taking two slices.
+local function slowLists(controller)
+    local slices = {}
+    local store = controller.dictionary_store
+    store.isBucketLoaded = function(_, _, key)
+        return key:sub(2) > "c" or (slices[key] or 0) >= 2
+    end
+    store.loadBucketSlice = function(self, first, last, dictionary)
+        local key = first .. last
+        if self:isBucketLoaded(dictionary, key) then
+            return true
+        end
+        slices[key] = (slices[key] or 0) + 1
+        return slices[key] >= 2
+    end
+    return slices
+end
+
+it("reads a first letter's word lists a slice at a time", function()
     local controller, keyboard, state = setup()
-    local loaded = {}
-    controller.dictionary_store.isBucketLoaded = function(_, _, key)
-        return loaded[key] == true or key:sub(2) > "c"
-    end
-    controller.dictionary_store.loadBucket = function(_, first, last)
-        loaded[first .. last] = true
-    end
+    local slices = slowLists(controller)
     state.type("w")
     state.pause()
-    T.eq(loaded.wa, true)
-    T.eq(loaded.wb, nil, "one list per step")
+    T.eq(slices.wa, 1, "one slice per step")
+    state.pause()
+    T.eq(slices.wa, 2)
+    T.eq(slices.wb, nil)
     state.pause()
     state.pause()
-    T.eq(loaded.wc, true)
+    state.pause()
+    state.pause()
+    T.eq(slices.wc, 2, "all read")
     keyboard.swype_mvp_closed = true
-    loaded.wa, loaded.wb, loaded.wc = nil, nil, nil
+    state.type("w")
     state.pause()
-    T.eq(loaded.wa, nil, "stops once the keyboard closes")
+    T.eq(slices.wa, 2, "nothing once the keyboard closes")
+end)
+
+it("stops reading word lists for a language switched away from",
+        function()
+    local controller, keyboard, state = setup()
+    local slices = slowLists(controller)
+    keyboard.swype_mvp_dictionary = "en"
+    state.type("w")
+    state.pause()
+    keyboard.swype_mvp_dictionary = "pl"
+    state.pause()
+    T.eq(slices.wa, 1)
+end)
+
+it("does not learn a word the cursor moved to", function()
+    local _, keyboard, state = setup()
+    state.type("h", "e", "l", "l", "o", " ", "w", "o")
+    state.pause()
+    keyboard.inputbox.charpos = 6 -- cursor moved to the end of "hello"
+    state.type(",")
+    state.pause()
+    T.eq(state.uses.hello, 1, "only once, when it was typed")
+end)
+
+it("forgets a tapped word when the keyboard closes", function()
+    local _, keyboard, state = setup()
+    state.type("w", "o")
+    keyboard.swype_mvp_tapped_word = nil -- as onCloseWidget does
+    keyboard.inputbox = newInputBox()
+    keyboard.inputbox:addChars("say hello")
+    state.type(" ")
+    state.pause()
+    T.eq(state.uses.hello, nil)
+end)
+
+it("offers no completions for letters after an apostrophe", function()
+    local _, _, state = setup()
+    state.type("d", "o", "n", "'", "t")
+    state.pause()
+    T.eq(state.row(), "")
+    T.eq(#state.asked, 0, "not asked for \"t\"")
+end)
+
+it("keeps a tapped word through a backspace inside it", function()
+    local controller, keyboard, state = setup()
+    state.type("h", "e", "l", "p", "x")
+    controller:delChar(keyboard)
+    state.type(" ")
+    state.pause()
+    T.eq(state.uses.help, 1)
 end)
 
 local engine = Replay.loadPlugin(T.plugin_dir).engine
@@ -312,6 +403,23 @@ local function words(results)
     for index, result in ipairs(results) do list[index] = result.word end
     return table.concat(list, ",")
 end
+
+it("reads a word list in slices and keeps it past a cancelled prefetch",
+        function()
+    local store = Replay.loadPlugin(T.plugin_dir).engine.dictionary_store
+    local calls = 0
+    repeat
+        calls = calls + 1
+    until store:loadBucketSlice("q", "n", "en", 5) or calls > 1000
+    T.truthy(calls > 1, "more than one slice")
+    T.truthy(store:isBucketLoaded("en", "qn"))
+    -- A swipe's prefetch read "qs" and was never used by that swipe.
+    local job = store:startPrefetch("q", "s", "en")
+    while not store:advancePrefetch(job) do end
+    store:loadBucketSlice("q", "s", "en", 5)
+    store:discardPrefetch({ dictionary = "en", jobs = { qs = job } })
+    T.truthy(store:isBucketLoaded("en", "qs"), "kept for completions")
+end)
 
 it("completes from the most common words, best first", function()
     local results = engine:completeWord{ prefix = "th", typed = "th" }

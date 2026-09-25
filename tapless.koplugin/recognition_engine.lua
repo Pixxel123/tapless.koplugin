@@ -191,7 +191,7 @@ end
 
 -- Words that complete a word being tapped out, best first. options:
 -- prefix, the letters typed so far as a signature (normalised, lowercase);
--- typed, the word as typed, left out of the results; dictionary; limit;
+-- typed, the word as typed, lowercased, left out; dictionary; limit;
 -- normalization_profile; context_bonus(previous_word, word) and
 -- previous_word; word_uses(word); and full, which also looks through
 -- every word starting with the prefix's letter, not only the most common,
@@ -213,15 +213,14 @@ function RecognitionEngine:completeWord(options)
         return {}
     end
     local data_lang = package.descriptor.data_language or dictionary
-    local typed = (options.typed or ""):lower()
+    local typed = options.typed
     local first = string.sub(prefix, 1, 1)
     local results, seen = {}, {}
     local function consider(entry, personal)
-        local signature = entry.signature or ""
         local word = entry.word
-        if not word or seen[word] or word:lower() == typed
-                or string.sub(signature, 1, #prefix) ~= prefix
-                or tripled(word:lower())
+        -- Dictionary and personal words are stored lowercase.
+        if not word or string.sub(entry.signature or "", 1, #prefix) ~= prefix
+                or seen[word] or word == typed or tripled(word)
                 or (entry.lang and entry.lang ~= dictionary
                     and entry.lang ~= data_lang)
                 or (self.blocked_words
@@ -235,7 +234,7 @@ function RecognitionEngine:completeWord(options)
             and options.context_bonus(options.previous_word, word) or 0
         results[#results + 1] = {
             word = word,
-            signature = signature,
+            signature = entry.signature,
             ranked_score = freq + bonus
                 + self.scoring:usageBonus(freq, uses),
             personal = personal == true,
