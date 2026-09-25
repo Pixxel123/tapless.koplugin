@@ -131,6 +131,22 @@ it("keeps a narrowed block at least 64 mm wide", function()
     near(block.left, SCREEN_MM - 64, "left")
 end)
 
+it("snaps a right corner to the right edge without moving the left",
+        function()
+    local start = { left = 20, width = 68, height = 60 }
+    local block = OneHanded.drag(start, "tr", 17.02, 0, PORTRAIT)
+    T.eq(block.left, 20, "left stays")
+    near(block.width, 87.02, "width reaches the edge")
+end)
+
+it("snaps a left corner to the left edge without moving the right",
+        function()
+    local start = { left = 22, width = 64, height = 60 }
+    local block = OneHanded.drag(start, "tl", -20, 0, PORTRAIT)
+    T.eq(block.left, 0, "left reaches the edge")
+    near(block.width, 86, "right stays")
+end)
+
 it("resets to 68 mm wide with a nil height on the nearer edge", function()
     local from_left = OneHanded.reset(
         { left = 5, width = 80, height = 50 }, PORTRAIT)

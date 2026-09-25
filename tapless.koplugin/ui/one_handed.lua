@@ -164,9 +164,29 @@ function OneHanded:moveToTarget(screen)
     end)
 end
 
-function OneHanded.snap(block, screen)
+-- Pulls the keys to an edge within SNAP mm of it. Moving both edges is
+-- right for a move, which drags the whole block; a corner drag must only
+-- snap the edge it is dragging, growing or shrinking the width, or it
+-- would carry the fixed opposite edge along with it.
+function OneHanded.snap(block, screen, grip)
+    local limits = OneHanded.limits(screen)
     local fitted = OneHanded.fit(block, screen)
     local screen_w = OneHanded.toMM(screen.w, screen)
+    if grip == "tr" or grip == "br" then
+        if screen_w - fitted.left - fitted.width < OneHanded.SNAP then
+            fitted.width = clamp(screen_w - fitted.left, limits.min_w,
+                limits.max_w)
+        end
+        return fitted
+    end
+    if grip == "tl" or grip == "bl" then
+        if fitted.left < OneHanded.SNAP then
+            local right = fitted.left + fitted.width
+            fitted.left = 0
+            fitted.width = clamp(right, limits.min_w, limits.max_w)
+        end
+        return fitted
+    end
     if fitted.left < OneHanded.SNAP then
         fitted.left = 0
     end
@@ -206,7 +226,7 @@ function OneHanded.drag(start, grip, dx, dy, screen, normal_height)
                 limits.min_h, limits.max_h)
         end
     end
-    return OneHanded.snap(block, screen)
+    return OneHanded.snap(block, screen, grip)
 end
 
 -- Back to the default width and the normal (nil) height, against whichever
