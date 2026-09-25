@@ -13,6 +13,7 @@ local function newVirtualKeyClass(calls)
     function VirtualKey:init()
         -- KOReader reads the label size from its global setting here.
         self.font_size = calls.settings:readSetting("keyboard_key_font_size", 22)
+        self.bold_setting = calls.settings:isTrue("keyboard_key_bold")
         -- Like KOReader: FrameContainer > CenterContainer > label widget, or
         -- an OverlapGroup of label and alt label when there is an alt label.
         local label = { setText = function() end }
@@ -463,4 +464,19 @@ it("leaves hold releases alone with no switch waiting", function()
     local key = VirtualKey:new{ key = "a", keyboard = newKeyboard(calls) }
     T.eq(key:onHoldReleaseKey(), true)
     T.eq(calls.stock_hold_release, 1)
+end)
+
+it("builds a key bold when asked, whatever the global setting", function()
+    local calls, VirtualKey = setup()
+    local keyboard = newKeyboard(calls)
+    T.eq(VirtualKey:new{ key = "a", keyboard = keyboard,
+        tapless_bold = true }.bold_setting, true, "bold key")
+    T.eq(VirtualKey:new{ key = "b", keyboard = keyboard }.bold_setting,
+        false, "plain key")
+    T.eq(calls.settings:isTrue("keyboard_key_bold"), false, "restored")
+end)
+
+it("never takes the one-handed handle for a letter", function()
+    local _, _, adapter = setup()
+    T.eq(adapter:isTextKey({ key = "a", is_tapless_handle = true }), false)
 end)

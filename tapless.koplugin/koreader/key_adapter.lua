@@ -21,6 +21,7 @@ end
 
 function KeyAdapter:isTextKey(key)
     return key and not key.is_swype_candidate
+        and not key.is_tapless_handle
         and #self.normalization:normalizeText(
             key.key or key.label,
             key.keyboard and key.keyboard.swype_mvp_normalization_profile) == 1
@@ -163,25 +164,39 @@ function KeyAdapter:keyFontSize()
     return KEY_FONT_SIZES[self.settings:readSetting("tapless_keyboard_size")]
 end
 
--- VirtualKey reads KOReader's global font-size setting during init.
--- Override that read in memory only, then restore it immediately so
--- disabling Tapless leaves the stock keyboard setting untouched.
+-- VirtualKey reads KOReader's global font-size and bold settings during
+-- init. Override those reads in memory only, then restore them immediately
+-- so disabling Tapless leaves the stock keyboard settings untouched.
 function KeyAdapter:initWithKeyFontSize(original_init, key, ...)
     local tapless_size = self:keyFontSize()
-    if not tapless_size then
+    local bold = key.tapless_bold
+    if not tapless_size and not bold then
         return original_init(key, ...)
     end
     local settings = self.settings
     local original_read_setting = settings.readSetting
-    settings.readSetting = function(target, setting, default)
-        if setting == "keyboard_key_font_size" then
-            return tapless_size
+    local original_is_true = settings.isTrue
+    if tapless_size then
+        settings.readSetting = function(target, setting, default)
+            if setting == "keyboard_key_font_size" then
+                return tapless_size
+            end
+            return original_read_setting(target, setting, default)
         end
-        return original_read_setting(target, setting, default)
+    end
+    if bold then
+        -- VirtualKey:init reads the bold setting itself.
+        settings.isTrue = function(target, setting)
+            if setting == "keyboard_key_bold" then
+                return true
+            end
+            return original_is_true(target, setting)
+        end
     end
 
     local ok, err = pcall(original_init, key, ...)
     settings.readSetting = original_read_setting
+    settings.isTrue = original_is_true
 
     if not ok then
         error(err)
