@@ -12,6 +12,10 @@ local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local Font = require("ui/font")
+local ImageWidget = require("ui/widget/imagewidget")
+local InputContainer = require("ui/widget/container/inputcontainer")
+local TextWidget = require("ui/widget/textwidget")
 local logger = require("logger")
 local time = require("ui/time")
 local Screen = Device.screen
@@ -122,6 +126,26 @@ local KeyboardUI = loadModule("keyboard_ui"):new{
     gesture_range = GestureRange,
     screen = Screen,
 }
+local OneHanded = loadModule("one_handed")
+local PanelButton = loadModule("panel_button"):new{
+    input_container = InputContainer,
+    frame_container = FrameContainer,
+    center_container = CenterContainer,
+    image_widget = ImageWidget,
+    text_widget = TextWidget,
+    font = Font,
+    geometry = Geom,
+    gesture_range = GestureRange,
+    blitbuffer = Blitbuffer,
+}
+local SidePanel = loadModule("side_panel"):new{
+    panel_button = PanelButton,
+    horizontal_group = HorizontalGroup,
+    horizontal_span = HorizontalSpan,
+    vertical_group = VerticalGroup,
+    vertical_span = VerticalSpan,
+    icon_dir = plugin_dir .. "/icons",
+}
 local RecognitionEngine = loadModule("recognition_engine")
     :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary,
         BlockedWords)
@@ -145,6 +169,8 @@ return loadModule("koreader_adapter"):new{
     gesture_controller = GestureController,
     trace_renderer = TraceRenderer,
     key_adapter = KeyAdapter,
+    one_handed = OneHanded:new(G_reader_settings),
+    side_panel = SidePanel,
     virtual_key = VirtualKey,
     ui_manager = UIManager,
     settings = G_reader_settings,

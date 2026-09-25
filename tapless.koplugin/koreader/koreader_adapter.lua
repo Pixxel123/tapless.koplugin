@@ -35,10 +35,32 @@ function KoreaderAdapter:install(VirtualKeyboard)
         adapter.key_adapter:ensureInstalled()
         self:free()
         self.layout = {}
+        self.swype_mvp_panel_buttons = nil
         local row_count = #self.KEYS + 1
-        local keys_height = adapter.key_adapter:keyHeight()
-        self.height = adapter.screen:scaleBySize(keys_height * row_count)
-        local base_key_width = math.floor((self.width
+        local screen = self:_swypeScreen()
+        -- One-handed, the keys block has its own place and size; while
+        -- resizing, the draft's.
+        local resize = self.swype_mvp_resize
+        local block = resize and resize.draft
+        if not block then
+            local state = adapter.one_handed:state(screen)
+            block = state.enabled and state or nil
+        end
+        self.height = block and block.height
+            and adapter.one_handed.toPx(block.height, screen)
+            or self:_swypeNormalHeight()
+        local border = adapter.size.border.default
+        local inset = border + self.padding
+        local inner_w = self.width - 2 * inset
+        local inner_h = self.height - 2 * inset
+        local area = block
+            and adapter.one_handed.layout(block, screen, inset, inner_w)
+        -- The width key sizes are worked out from: the whole keyboard, as
+        -- before, or just enough for the keys block.
+        local keys_width = area
+            and area.keys_w + 2 * self.padding + 2 * self.key_padding
+            or self.width
+        local base_key_width = math.floor((keys_width
             - (#self.KEYS[1] + 1) * self.key_padding - 2 * self.padding)
             / #self.KEYS[1])
         local base_key_height = math.floor((self.height
@@ -54,7 +76,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
             allow_mirroring = false,
         }
         local candidate_row = adapter.keyboard_ui:createCandidateRow(self, {
-            width = self.width,
+            width = keys_width,
             height = base_key_height,
             key_padding = self.key_padding,
             padding = self.padding,
@@ -101,6 +123,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 if is_space then
                     alt_label = self:_swypeDictionaryLabel()
                 end
+                local is_globe = self.utf8mode_keys[label] ~= nil
+                if is_globe then
+                    alt_label = adapter.one_handed.HINT
+                end
                 local virtual_key = adapter.virtual_key:new{
                     key = key,
                     key_chars = key_chars,
@@ -126,6 +152,9 @@ function KoreaderAdapter:install(VirtualKeyboard)
                     end
                     virtual_key.hold_cb_is_popup = false
                 end
+                if is_globe then
+                    self:_swypeWireGlobeKey(virtual_key)
+                end
                 table.insert(horizontal_group, virtual_key)
                 table.insert(layout_row, virtual_key)
                 if key_index ~= #self.KEYS[row_index] then
@@ -139,9 +168,14 @@ function KoreaderAdapter:install(VirtualKeyboard)
             end
         end
 
+        local content = vertical_group
+        if area then
+            content = self:_swypeOneHandedRow(vertical_group, area, block,
+                screen, inner_h)
+        end
         local keyboard_frame = adapter.frame_container:new{
             margin = 0,
-            bordersize = adapter.size.border.default,
+            bordersize = border,
             background = adapter.settings:nilOrTrue("keyboard_key_border")
                 and adapter.blitbuffer.COLOR_LIGHT_GRAY
                 or adapter.blitbuffer.COLOR_WHITE,
@@ -149,13 +183,8 @@ function KoreaderAdapter:install(VirtualKeyboard)
             padding = self.padding,
             allow_mirroring = false,
             adapter.center_container:new{
-                dimen = adapter.geometry:new{
-                    w = self.width - 2 * adapter.size.border.default
-                        - 2 * self.padding,
-                    h = self.height - 2 * adapter.size.border.default
-                        - 2 * self.padding,
-                },
-                vertical_group,
+                dimen = adapter.geometry:new{ w = inner_w, h = inner_h },
+                content,
             },
         }
         self[1] = adapter.bottom_container:new{
@@ -165,6 +194,153 @@ function KoreaderAdapter:install(VirtualKeyboard)
         keyboard_frame.dimen = keyboard_frame:getSize()
         self.dimen = keyboard_frame.dimen
         adapter.keyboard_ui:registerGestureRanges(self)
+    end
+
+    function VirtualKeyboard:_swypeScreen()
+        return {
+            w = adapter.screen:getWidth(),
+            h = adapter.screen:getHeight(),
+            dpi = adapter.screen:getDPI(),
+        }
+    end
+
+    -- The height from Tapless's Keyboard size setting.
+    function VirtualKeyboard:_swypeNormalHeight()
+        return adapter.screen:scaleBySize(
+            adapter.key_adapter:keyHeight() * (#self.KEYS + 1))
+    end
+
+    -- The keys block with the side panel in the wider strip beside it and
+    -- a spacer in the other, filling the keyboard's inner width.
+    function VirtualKeyboard:_swypeOneHandedRow(keys_group, area, block,
+            screen, inner_h)
+        local keyboard = self
+        local strip_w = math.max(0, area.panel_w - self.key_padding)
+        local panel = adapter.side_panel:create{
+            width = strip_w,
+            height = inner_h,
+            button = adapter.one_handed.buttonSize(screen, strip_w, inner_h,
+                self.key_padding),
+            key_padding = self.key_padding,
+            side = area.panel_side,
+            target = adapter.one_handed.target(block, screen),
+            on_leave = function()
+                keyboard:_swypeSetOneHanded(function(one_handed, s)
+                    one_handed:setEnabled(s, false)
+                end)
+            end,
+            on_move = function()
+                keyboard:_swypeSetOneHanded(function(one_handed, s)
+                    one_handed:moveToTarget(s)
+                end)
+            end,
+            on_resize = function()
+                keyboard:_swypeStartResize()
+            end,
+        }
+        self.swype_mvp_panel_buttons = panel.buttons
+        local keys_box = adapter.center_container:new{
+            dimen = adapter.geometry:new{ w = area.keys_w, h = inner_h },
+            keys_group,
+        }
+        local gap = adapter.horizontal_span:new{ width = self.key_padding }
+        local row = adapter.horizontal_group:new{ allow_mirroring = false }
+        if area.panel_side == "left" then
+            table.insert(row, panel.widget)
+            table.insert(row, gap)
+            table.insert(row, keys_box)
+            table.insert(row,
+                adapter.horizontal_span:new{ width = area.after })
+        else
+            table.insert(row,
+                adapter.horizontal_span:new{ width = area.before })
+            table.insert(row, keys_box)
+            table.insert(row, gap)
+            table.insert(row, panel.widget)
+        end
+        return row
+    end
+
+    -- Tap 🌐 for KOReader's layout menu, which KOReader opens on hold;
+    -- hold it to switch one-handed mode when the finger lifts.
+    function VirtualKeyboard:_swypeWireGlobeKey(key)
+        local open_menu = key.hold_callback
+        if not open_menu then
+            return
+        end
+        local keyboard = self
+        local function close_popup()
+            if key.popup then
+                adapter.ui_manager:close(key.popup)
+            end
+        end
+        local function tap()
+            -- The layout popup's centre key runs this key's tap action,
+            -- read while the popup is built: there it closes the popup.
+            key.callback = close_popup
+            open_menu()
+            key.callback = tap
+        end
+        key.callback = tap
+        -- Switching may rebuild the dialog and its keyboard, which must not
+        -- happen under a finger that is still down.
+        key.hold_callback = function()
+            keyboard.swype_mvp_switch_on_lift = true
+        end
+        key.hold_cb_is_popup = false
+    end
+
+    function VirtualKeyboard:_swypeTakeLift()
+        if not self.swype_mvp_switch_on_lift then
+            return false
+        end
+        self.swype_mvp_switch_on_lift = nil
+        self:_swypeSetOneHanded(function(one_handed, screen)
+            one_handed:toggle(screen)
+        end)
+        return true
+    end
+
+    -- Saves a one-handed change through change(one_handed, screen), then
+    -- rebuilds the keys.
+    function VirtualKeyboard:_swypeSetOneHanded(change)
+        change(adapter.one_handed, self:_swypeScreen())
+        self:_swypeRebuild()
+    end
+
+    -- Rebuilds the keys from the saved state. A new height goes through the
+    -- dialog, which builds a new keyboard from the saved settings, so this
+    -- one is not touched after that.
+    function VirtualKeyboard:_swypeRebuild()
+        local old_height = self.height
+        self:_swypeReset()
+        self:addKeys()
+        local parent = self.inputbox and self.inputbox.parent
+        if self.height ~= old_height and parent
+                and parent.onKeyboardHeightChanged then
+            parent:onKeyboardHeightChanged()
+            return
+        end
+        self:_refresh(true, self.height ~= old_height)
+    end
+
+    -- Resize mode starts from the saved block at its actual height; Task 8
+    -- draws the frame over it.
+    function VirtualKeyboard:_swypeStartResize()
+        local screen = self:_swypeScreen()
+        local state = adapter.one_handed:state(screen)
+        self.swype_mvp_resize = {
+            draft = {
+                left = state.left,
+                width = state.width,
+                height = state.height or adapter.one_handed.toMM(
+                    self:_swypeNormalHeight(), screen),
+            },
+            start_height = self.height,
+        }
+        self:_swypeReset()
+        self:addKeys()
+        self:_refresh(true)
     end
 
     function VirtualKeyboard:_swypeScheduleWarmUp(delay)
@@ -183,6 +359,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self.swype_mvp_closed = true
         self.swype_mvp_pending_space = nil
         self.swype_mvp_tapped_word = nil
+        self.swype_mvp_switch_on_lift = nil
         self:_swypeReset()
         adapter.dictionary_controller:stopWarmUp(self)
         self:_swypeCancelBucketPrefetch()
@@ -383,6 +560,9 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     function VirtualKeyboard:onSwypeWordPanRelease(_, ges)
+        if self:_swypeTakeLift() then
+            return true
+        end
         return adapter.gesture_controller:onPanRelease(self, ges)
     end
 
