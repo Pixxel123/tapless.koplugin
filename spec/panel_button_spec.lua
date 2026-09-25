@@ -18,7 +18,7 @@ local function newButtons()
         end },
         geometry = Plain,
         gesture_range = T.gesture_range,
-        blitbuffer = { COLOR_WHITE = "white" },
+        blitbuffer = { COLOR_WHITE = "white", COLOR_BLACK = "black" },
     }
 end
 
@@ -73,4 +73,36 @@ it("takes taps without a callback and listens only on itself", function()
     local range = button.ges_events.TaplessButtonTap[1]
     T.eq(range.ges, "tap", "gesture")
     T.eq(range.range(), button.dimen, "range")
+end)
+
+it("builds a filled button with a white label", function()
+    local button = newButtons():create{
+        name = "done", text = "Done", bold = true, filled = true,
+        width = 200, height = 90, radius = 21,
+    }
+    local frame = button[1]
+    T.eq(frame.background, "black", "background")
+    T.eq(frame.radius, 21, "radius")
+    T.eq(frame[1][1].fgcolor, "white", "label colour")
+end)
+
+it("keeps an outlined button white with the default label colour",
+        function()
+    local button = newButtons():create{
+        name = "reset", text = "Reset", width = 200, height = 90,
+        bordersize = 4,
+    }
+    T.eq(button[1].background, "white", "background")
+    T.eq(button[1][1][1].fgcolor, nil, "label colour")
+end)
+
+it("builds a bare icon button with no frame", function()
+    local button = newButtons():create{
+        name = "move", icon = "/icons/move.svg", icon_size = 5,
+        bare = true, width = 10, height = 10,
+    }
+    local frame = button[1]
+    T.eq(frame.background, nil, "background")
+    T.eq(frame.bordersize, 0, "bordersize")
+    T.eq(frame.radius, nil, "radius")
 end)

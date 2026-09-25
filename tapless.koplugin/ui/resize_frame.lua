@@ -185,20 +185,22 @@ function ResizeFrame:create(keyboard, options)
     end
     local resize = keyboard.swype_mvp_resize
     resize.grip = px(self.GRIP_MM)
-    local border = px(0.4)
+    -- ZenOS-style buttons: a rounded outline, and a filled main action.
+    local border, radius = px(0.35), px(1.8)
     local reset = self.panel_button:create{
         name = "reset", text = "Reset", bordersize = border,
+        radius = radius,
         width = px(self.BUTTON_W_MM), height = px(self.BUTTON_H_MM),
         callback = options.on_reset,
     }
     local move = self.panel_button:create{
         name = "move", icon = self.icon_dir .. "/move.svg",
-        icon_size = px(self.MOVE_MM * 0.6), bordersize = border,
-        radius = px(self.MOVE_MM / 2),
+        icon_size = px(self.MOVE_MM * 0.6), bare = true,
         width = px(self.MOVE_MM), height = px(self.MOVE_MM),
     }
     local done = self.panel_button:create{
         name = "done", text = "Done", bold = true, bordersize = border,
+        radius = radius, filled = true,
         width = px(self.BUTTON_W_MM), height = px(self.BUTTON_H_MM),
         callback = options.on_done,
     }

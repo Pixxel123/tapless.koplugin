@@ -161,6 +161,51 @@ it("listens for drags over the whole screen and sends them on", function()
     T.eq(resize.grip, 71, "grip in px")
 end)
 
+it("creates Reset with a thin rounded border and Done filled and bold",
+        function()
+    local scheduled = {}
+    local recorded = {}
+    local frame = ResizeFrame:new{
+        ui_manager = { scheduleIn = function(_, delay, fn)
+            table.insert(scheduled, { delay = delay, fn = fn })
+        end },
+        input_container = Plain,
+        overlap_group = Plain,
+        vertical_group = Plain,
+        vertical_span = Plain,
+        horizontal_span = Plain,
+        gesture_range = T.gesture_range,
+        blitbuffer = { COLOR_BLACK = "black" },
+        panel_button = { create = function(_, options)
+            recorded[options.name] = options
+            return options
+        end },
+        screen = { getDPI = function() return 300 end },
+        icon_dir = "/icons",
+    }
+    local resize = newResize()
+    local keyboard = {
+        swype_mvp_resize = resize,
+        _swypeResizePan = function() end,
+        _swypeResizeRelease = function() end,
+    }
+    frame:create(keyboard, {
+        width = 1264, height = 700,
+        keys = { x = 461, y = 4, w = 803, h = 692 },
+        fade = { x = 4, y = 4, w = 1256, h = 692 },
+        on_reset = function() end, on_done = function() end,
+    })
+    T.eq(recorded.reset.bordersize, 4, "reset border")
+    T.eq(recorded.reset.radius, 21, "reset radius")
+    T.eq(recorded.done.bordersize, 4, "done border")
+    T.eq(recorded.done.radius, 21, "done radius")
+    T.eq(recorded.done.filled, true, "done filled")
+    T.eq(recorded.done.bold, true, "done bold")
+    T.eq(recorded.move.bare, true, "move bare")
+    T.eq(recorded.move.bordersize, nil, "move no border")
+    T.eq(recorded.move.radius, nil, "move no radius")
+end)
+
 it("fades the keyboard, outlines the keys and records where it drew",
         function()
     -- A container that records its own paint, and buttons with dimens.
