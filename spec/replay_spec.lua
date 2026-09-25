@@ -279,6 +279,37 @@ it("lets a learned word pair change the first choice", function()
     T.eq(result.bonus[1], 1e7)
 end)
 
+it("scores with the dictionary's word-pair table, unless told not to",
+        function()
+    local attempt = attemptFor("water")
+    attempt.previous_word = "the"
+    local store = plugin.engine.dictionary_store
+    local result = Replay.run(plugin, attempt)
+    T.eq(result.bonus[1], store:pairBonus("the", result.words[1], "en"))
+    local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
+    with_context.context_model:learn("the", result.words[1])
+    T.eq(Replay.run(with_context, attempt).bonus[1],
+        with_context.context_model:bonus("the", result.words[1],
+            store:pairBonus("the", result.words[1], "en")),
+        "learned and table bonus together")
+    local without = Replay.loadPlugin(T.plugin_dir, { no_pairs = true })
+    T.eq(Replay.run(without, attempt).bonus[1], nil)
+    T.eq(without.engine.dictionary_store:pairBonus("the", "water", "en"), 0)
+end)
+
+it("times each swipe and averages the times", function()
+    local result = Replay.run(plugin, attemptFor("water"))
+    T.eq(type(result.ms), "number")
+    T.truthy(result.ms >= 0)
+    local summary = Replay.summarize({
+        { target = "water", words = { "water" }, ms = 2 },
+        { target = "hello", words = { "hello" }, ms = 4 },
+        { target = "cold", words = { "could" } },
+    })
+    T.eq(summary.all.ms, 6)
+    T.eq(summary.all.timed, 2)
+end)
+
 it("learns the intended word after its swipe", function()
     local with_context = Replay.loadPlugin(T.plugin_dir, { context = true })
     local attempt = attemptFor("water")

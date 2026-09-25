@@ -4,8 +4,12 @@
 --
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
 --     [--context] [--context-settings FILE] [--usage]
---     [--usage-settings FILE] [--per-session] [--no-learning] [--misses]
---     [--losses] [--keep-suspect] SESSION.jsonl...
+--     [--usage-settings FILE] [--per-session] [--no-learning] [--no-pairs]
+--     [--misses] [--losses] [--keep-suspect] SESSION.jsonl...
+--
+-- The dictionary's word-pair table is used as on the device; --no-pairs
+-- leaves it out. The ms column is the recognition engine's mean time per
+-- swipe, first loads from disk included.
 --
 -- --usage-settings and --context-settings read the counts from a KOReader
 -- settings file (settings.reader.lua). A session is recorded with learning
@@ -100,16 +104,25 @@ function Replay.loadPlugin(plugin_dir, options)
                 return nil
             end
             local dir = plugin_dir .. "/dictionaries/" .. id .. "/"
+            local files = {
+                bucket_data = dir .. "words.buckets.tsv",
+                bucket_index = dir .. "words.buckets.idx",
+                popular_data = dir .. "words.popular.tsv",
+                popular_index = dir .. "words.popular.idx",
+            }
+            -- The word-pair table, as the device's registry finds it.
+            local pairs_file = not (options and options.no_pairs)
+                and io.open(dir .. "words.pairs.tsv", "rb")
+            if pairs_file then
+                pairs_file:close()
+                files.pairs_data = dir .. "words.pairs.tsv"
+                files.pairs_index = dir .. "words.pairs.idx"
+            end
             return {
                 id = id,
                 data_language = info.data_language or id,
                 normalization_profile = info.normalization_profile,
-                files = {
-                    bucket_data = dir .. "words.buckets.tsv",
-                    bucket_index = dir .. "words.buckets.idx",
-                    popular_data = dir .. "words.popular.tsv",
-                    popular_index = dir .. "words.popular.idx",
-                },
+                files = files,
             }
         end,
     }
@@ -284,10 +297,11 @@ function Replay.numberKeyGestures(plugin, attempt)
 end
 
 -- Replays one recorded attempt. Returns { letters, words, personal,
--- bonus, uses }; personal runs parallel to words, and bonus does too when
--- plugin.context_model exists, uses when plugin.usage_model does (empty
--- otherwise). On a signature too short to look up, short = true and
--- words, personal, bonus and uses come back empty.
+-- bonus, uses, ms }; personal runs parallel to words, and bonus does too
+-- when there is a word-pair table or plugin.context_model, uses when
+-- plugin.usage_model exists (empty otherwise). ms is the time the
+-- recognition engine took. On a signature too short to look up, short =
+-- true and words, personal, bonus and uses come back empty.
 function Replay.run(plugin, attempt)
     local layout = buildLayout(attempt.keys)
     local info = plugin.manifest(attempt.dictionary or "en") or {}
@@ -363,24 +377,37 @@ function Replay.run(plugin, attempt)
     local trace_info = finalized.trace_info
     local geometry = plugin.geometry
     local start = trace_info.points and trace_info.points[1]
-    -- context_bonus, when plugin.context_model exists (--context),
-    -- scores pairs learned from swipes replayed so far this run
-    -- (Replay.learn), not from the device's own saved counts, unless
-    -- seeded with --context-settings. Personal words come in with
-    -- --personal.
-    local context_bonus = plugin.context_model and function(previous_word,
-            word)
-        return plugin.context_model:bonus(previous_word, word)
-    end or nil
+    -- context_bonus, as on the device, adds the dictionary's word-pair
+    -- table (unless --no-pairs; older plugins have none) to pairs learned
+    -- when plugin.context_model exists (--context): learned from swipes
+    -- replayed so far this run (Replay.learn), not from the device's own
+    -- saved counts, unless seeded with --context-settings. Personal words
+    -- come in with --personal.
+    local dictionary = attempt.dictionary or "en"
+    local store = plugin.engine.dictionary_store
+    local pair_bonus = store.pairBonus and function(previous_word, word)
+        return store:pairBonus(previous_word, word, dictionary)
+    end
+    local context_bonus
+    if plugin.context_model then
+        context_bonus = function(previous_word, word)
+            return plugin.context_model:bonus(previous_word, word,
+                pair_bonus and pair_bonus(previous_word, word) or 0)
+        end
+    elseif pair_bonus then
+        local package = store:open(dictionary)
+        context_bonus = package and package.pairs_index and pair_bonus or nil
+    end
     -- word_uses, when plugin.usage_model exists (--usage), counts the
     -- words kept so far this run, or seeded with --usage-settings.
     local word_uses = plugin.usage_model and function(word)
         return plugin.usage_model:uses(word)
     end or nil
+    local started = os.clock()
     local candidates = plugin.engine:pickCandidates{
         signature = signature,
         limit = 4,
-        dictionary = attempt.dictionary or "en",
+        dictionary = dictionary,
         trace_info = trace_info,
         key_centers = geometry:keyCenters(layout, profile),
         start_letters = geometry.startLetters and function(first)
@@ -394,6 +421,7 @@ function Replay.run(plugin, attempt)
         context_bonus = context_bonus,
         word_uses = word_uses,
     }
+    local ms = (os.clock() - started) * 1000
     local words, personal, bonus, uses = {}, {}, {}, {}
     for index, candidate in ipairs(candidates) do
         words[index] = candidate.word
@@ -407,7 +435,7 @@ function Replay.run(plugin, attempt)
         end
     end
     return { letters = signature, words = words, personal = personal,
-        bonus = bonus, uses = uses }
+        bonus = bonus, uses = uses, ms = ms }
 end
 
 -- "right" or "wrong" when the first suggestion is a word the user has
@@ -628,10 +656,11 @@ function Replay.mcnemar(fixed, broken)
     return math.min(1, 2 * tail)
 end
 
--- rows: { target, words }. group(row) names the row's group, or nil.
+-- rows: { target, words, ms }. group(row) names the row's group, or nil.
+-- ms, the time each swipe took, is summed over the rows that have it.
 function Replay.summarize(rows, group)
     local function tally()
-        return { n = 0, top1 = 0, top4 = 0, rr = 0 }
+        return { n = 0, top1 = 0, top4 = 0, rr = 0, ms = 0, timed = 0 }
     end
     local summary = { all = tally(), groups = {}, order = {} }
     local function add(counts, row)
@@ -639,6 +668,10 @@ function Replay.summarize(rows, group)
         if hit(row, 1) then counts.top1 = counts.top1 + 1 end
         if hit(row, 4) then counts.top4 = counts.top4 + 1 end
         counts.rr = counts.rr + reciprocalRank(row)
+        if row.ms then
+            counts.ms = counts.ms + row.ms
+            counts.timed = counts.timed + 1
+        end
     end
     for _, row in ipairs(rows) do
         add(summary.all, row)
@@ -753,6 +786,10 @@ local function reciprocal(sum, count)
         or "     -"
 end
 
+local function milliseconds(sum, count)
+    return count > 0 and string.format("%5.1f", sum / count) or "    -"
+end
+
 local function lengthGroup(row)
     local length = #row.target
     if length <= 3 then return "length 2-3" end
@@ -769,7 +806,7 @@ local function main(args)
     local personal_dir
     local use_context, context_settings = false, nil
     local use_usage, usage_settings, per_session = false, nil, false
-    local frozen = false
+    local frozen, no_pairs = false, false
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -796,6 +833,8 @@ local function main(args)
             per_session = true
         elseif value == "--no-learning" then
             frozen = true
+        elseif value == "--no-pairs" then
+            no_pairs = true
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -812,7 +851,8 @@ local function main(args)
             .. "[--compare DIR] [--personal DIR] [--context] "
             .. "[--context-settings FILE] [--usage] "
             .. "[--usage-settings FILE] [--per-session] [--no-learning] "
-            .. "[--misses] [--losses] [--keep-suspect] SESSION.jsonl...\n")
+            .. "[--no-pairs] [--misses] [--losses] [--keep-suspect] "
+            .. "SESSION.jsonl...\n")
         os.exit(2)
     end
     package.path = tools_dir .. "/?.lua;" .. package.path
@@ -835,13 +875,16 @@ local function main(args)
         and dofile(usage_settings)[USAGE_SETTING_KEY]
     local options = { personal_dir = personal_dir, context = use_context,
         context_counts = context_counts, usage = use_usage,
-        usage_counts = usage_counts, frozen = frozen }
+        usage_counts = usage_counts, frozen = frozen, no_pairs = no_pairs }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
     local context_first, context_first_before = 0, 0
+    -- Whether any swipe had a word-pair bonus to give, learned or from the
+    -- dictionary's table.
+    local with_pairs = false
     local number_starts, number_left, number_gestures = 0, 0, {}
     local learned_right, learned_wrong = 0, 0
     local known_at_start, twice_at_start = Replay.usageSize(plugin)
@@ -880,6 +923,7 @@ local function main(args)
                     ~= target then
                 personal_first = personal_first + 1
             end
+            with_pairs = with_pairs or result.bonus[1] ~= nil
             if result.bonus[1] and result.bonus[1] > 0
                     and (result.words[1] or ""):lower() ~= target then
                 context_first = context_first + 1
@@ -898,6 +942,7 @@ local function main(args)
                 target = attempt.target,
                 words = result.words,
                 letters = result.letters,
+                ms = result.ms,
                 mode = attempt.mode,
                 number_row = number_row,
                 on_first_key = result.letters:sub(1, 1)
@@ -950,12 +995,13 @@ local function main(args)
     }
     print(string.format("%d swipes replayed, %d too short to be swipes",
         #replayed, short))
-    print(string.format("%-24s %6s  %7s %7s %6s  %7s %7s", "", "n",
-        "replay", "top 4", "MRR", "device", "top 4"))
+    print(string.format("%-24s %6s  %7s %7s %6s %5s  %7s %7s", "", "n",
+        "replay", "top 4", "MRR", "ms", "device", "top 4"))
     local function line(name, counts, device_counts)
-        print(string.format("%-24s %6d  %7s %7s %s  %7s %7s", name,
+        print(string.format("%-24s %6d  %7s %7s %s %s  %7s %7s", name,
             counts.n, percent(counts.top1, counts.n),
             percent(counts.top4, counts.n), reciprocal(counts.rr, counts.n),
+            milliseconds(counts.ms, counts.timed),
             percent(device_counts.top1, device_counts.n),
             percent(device_counts.top4, device_counts.n)))
     end
@@ -977,15 +1023,20 @@ local function main(args)
                 .. "intended word: %d", personal_first))
         end
     end
-    if use_context then
+    if use_context or with_pairs then
         if other then
-            print(string.format("\nLearned word pairs put first over "
-                .. "the intended word: %d (was %d)", context_first,
+            print(string.format("\nWords with a word-pair bonus put first "
+                .. "over the intended word: %d (was %d)", context_first,
                 context_first_before))
         else
-            print(string.format("\nLearned word pairs put first over "
-                .. "the intended word: %d", context_first))
+            print(string.format("\nWords with a word-pair bonus put first "
+                .. "over the intended word: %d", context_first))
         end
+    end
+    if other then
+        print("Times (ms) are this plugin's, and only rough: two plugins "
+            .. "in one LuaJIT process slow each other down. Time each on "
+            .. "its own to compare them.")
     end
     if number_starts > 0 or number_left > 0 then
         print(string.format("\nSwipes that began on a number key: %d taken "
