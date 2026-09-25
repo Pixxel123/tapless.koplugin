@@ -69,9 +69,10 @@ function InputController:_setPersonalOffer(keyboard, word)
         word, profile)
     local added = prepared and self.personal_dictionary:contains(
         language, prepared, profile) or false
+    -- A dictionary word with the same letters needs no adding: "dont" has
+    -- "don't".
     if prepared and not added
-            and self.dictionary_store:containsWord(
-                signature, prepared, language) then
+            and self.dictionary_store:hasLetters(signature, language) then
         word = nil
     end
     if not current and not word then
@@ -180,19 +181,24 @@ function InputController:deleteText(keyboard, text)
     end
 end
 
--- The word a next word is taken to follow: the last run of letters before
--- any trailing spaces, lowercased. Nothing when punctuation or a digit
--- ends the text.
-local function lastWord(text)
-    local word = text:match("([^%s%p%d]+)%s*$")
-    return word and Utf8Proc.lowercase_dumb(word) or nil
+local function isApostrophe(char)
+    return char == "'" or char == "’"
 end
 
--- Characters that join letters into one word: "don't", "well-known",
--- "3rd". Letters after one are no word of their own.
+-- The word a next word is taken to follow: the last run of letters before
+-- any trailing spaces, with an apostrophe inside it ("don't"), lowercased.
+-- Nothing when punctuation or a digit ends the text.
+local function lastWord(text)
+    local word = text:match("([^%s%p%d]+'[^%s%p%d]+)%s*$")
+        or text:match("([^%s%p%d]+’[^%s%p%d]+)%s*$")
+        or text:match("([^%s%p%d]+)%s*$")
+    return word and (Utf8Proc.lowercase_dumb(word):gsub("’", "'")) or nil
+end
+
+-- Characters that join a word to the next letters without being part of
+-- either: "well-known", "3rd". Letters after one are no word of their own.
 local function joinsWord(char)
-    return char == "'" or char == "’" or char == "-"
-        or char:match("^%d$") ~= nil
+    return char == "-" or char:match("^%d$") ~= nil
 end
 
 -- How much text before the cursor is read to find the word being typed
@@ -230,10 +236,10 @@ function InputController:_completionsEnabled(keyboard)
         and self.settings:nilOrTrue(self.COMPLETION_SETTING)
 end
 
--- The word the cursor ends, as typed, and the word before it as swipes
--- see one (lastWord), when only spaces lie between them. Nothing when the
--- cursor is not at the end of a word, or the word is joined to the text
--- before it.
+-- The word the cursor ends, as typed, apostrophes included ("don't",
+-- "don'"), and the word before it as swipes see one (lastWord), when only
+-- spaces lie between them. Nothing when the cursor is not at the end of a
+-- word, or the word is joined to the text before it.
 function InputController:_wordAtCursor(keyboard)
     local inputbox = keyboard.inputbox
     -- KOReader releases without InputText:getChar cannot say.
@@ -245,7 +251,9 @@ function InputController:_wordAtCursor(keyboard)
         return char ~= nil
             and self.normalization:normalizeChar(char, profile) ~= nil
     end
-    if isLetter(inputbox:getChar(0)) then
+    local after = inputbox:getChar(0)
+    if isLetter(after) or (after and isApostrophe(after)
+            and isLetter(inputbox:getChar(1))) then
         return
     end
     local before = {}
@@ -257,8 +265,13 @@ function InputController:_wordAtCursor(keyboard)
         table.insert(before, 1, char)
     end
     local start = #before + 1
-    while start > 1 and isLetter(before[start - 1]) do
+    while start > 1 and (isLetter(before[start - 1])
+            or isApostrophe(before[start - 1])) do
         start = start - 1
+    end
+    -- A word starts with a letter: a quote before it is not part of it.
+    while start <= #before and isApostrophe(before[start]) do
+        start = start + 1
     end
     local length = #before - start + 1
     if length == 0 or length > MAX_WORD_LETTERS
@@ -360,13 +373,20 @@ function InputController:_learnTappedWord(keyboard)
     end
     local profile = keyboard.swype_mvp_normalization_profile
     local language = keyboard.swype_mvp_dictionary or "en"
+    local lowered = Utf8Proc.lowercase_dumb(typed):gsub("’", "'")
+    local signature = self.normalization:normalizeText(lowered, profile)
     self.ui_manager:scheduleIn(0, function()
-        local personal = self.personal_dictionary
-        local word, signature = personal:prepareWord(typed, profile)
-        if not word or not (self.dictionary_store:containsWord(
-                    signature, word, language)
-                or personal:contains(language, word, profile)) then
-            return
+        -- The dictionary's own spelling: "i'm" is learned as "I'm".
+        local word = self.dictionary_store:findWord(signature, lowered,
+            language)
+        if not word then
+            local personal = self.personal_dictionary
+            local prepared = personal:prepareWord(typed, profile)
+            if not (prepared
+                    and personal:contains(language, prepared, profile)) then
+                return
+            end
+            word = prepared
         end
         self.logger.dbg("swype mvp learned tapped word", word)
         self:learnContext(previous_word, word)
@@ -705,12 +725,12 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
     end
     -- A space or punctuation ends a word tapped out letter by letter, if
     -- the cursor is still where the last letter was typed. An apostrophe
-    -- or hyphen ends only part of one ("don't", "well-known"), which is not
-    -- learned.
+    -- is part of the word ("don't"); a hyphen ends only part of one
+    -- ("well-known"), which is not learned.
     local inputbox = keyboard.inputbox
     local tapped = keyboard.swype_mvp_tapped_word
     local first_char = self.normalization:splitChars(key or "")[1]
-    if tapped and first_char
+    if tapped and first_char and not isApostrophe(first_char)
             and not self.normalization:normalizeChar(first_char, profile) then
         keyboard.swype_mvp_tapped_word = nil
         if first_char:match("^[%s%p]$") and not joinsWord(first_char)
@@ -771,7 +791,7 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
             or (inputbox.getChar and inputbox:getChar(-1))
         starts_word = not before
             or not (self.normalization:normalizeChar(before, profile)
-                or joinsWord(before))
+                or isApostrophe(before) or joinsWord(before))
     end
     local charpos = inputbox.charpos
     self.logger.dbg("add char", key)
@@ -783,8 +803,8 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
             charpos = inputbox.charpos,
         }
         self:_warmCompletionLists(keyboard, letter)
-    elseif letter and tapped and tapped.inputbox == inputbox
-            and tapped.charpos == charpos then
+    elseif (letter or isApostrophe(key)) and tapped
+            and tapped.inputbox == inputbox and tapped.charpos == charpos then
         tapped.charpos = inputbox.charpos
     elseif letter then
         keyboard.swype_mvp_tapped_word = nil
@@ -797,8 +817,9 @@ function InputController:addChar(keyboard, key, keep_swype_candidates)
     end
     local chars = self.normalization:splitChars(key or "")
     local last = chars[#chars]
-    if last and self.normalization:normalizeChar(
-            last, keyboard.swype_mvp_normalization_profile) then
+    -- An apostrophe leaves the word unfinished: "don'" goes on to "don't".
+    if last and (isApostrophe(last) or self.normalization:normalizeChar(
+            last, keyboard.swype_mvp_normalization_profile)) then
         self:_afterManualEdit(keyboard, false)
     elseif last and (last:match("^%s$") or last:match("^%p$")) then
         self:_afterManualEdit(keyboard, true)
@@ -825,8 +846,9 @@ function InputController:delChar(keyboard)
     -- what is left before the cursor was not tapped here.
     local previous = inputbox.getChar and inputbox:getChar(-1)
     if tapped and tapped.inputbox == inputbox and tapped.charpos == charpos
-            and previous and self.normalization:normalizeChar(previous,
-                keyboard.swype_mvp_normalization_profile) then
+            and previous and (isApostrophe(previous)
+                or self.normalization:normalizeChar(previous,
+                    keyboard.swype_mvp_normalization_profile)) then
         tapped.charpos = inputbox.charpos
     else
         keyboard.swype_mvp_tapped_word = nil

@@ -1,3 +1,13 @@
+Contractions (in words.buckets.tsv and words.popular.tsv)
+
+The word list had no words with an apostrophe. tools/add_contractions.py
+added 68 English contractions ("don't", "I'm", "they're", ...) at the
+frequencies of wordfreq 3.1.1 (https://github.com/rspeer/wordfreq), whose
+word frequency data is licensed under the Creative Commons
+Attribution-ShareAlike 4.0 licence (CC BY-SA 4.0,
+https://creativecommons.org/licenses/by-sa/4.0/). The list and its
+frequencies are in tools/contractions_en.tsv.
+
 Word-pair table (words.pairs.tsv, words.pairs.idx)
 
 Counted from the English sentences of Tatoeba (https://tatoeba.org),

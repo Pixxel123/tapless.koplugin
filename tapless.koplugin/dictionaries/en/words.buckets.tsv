@@ -5350,7 +5350,9 @@ art	art	5290	en
 account	account	5210	en
 amount	amount	5130	en
 august	august	5100	en
+arent	aren't	5050	en
 agreement	agreement	4880	en
+aint	ain't	4880	en
 accept	accept	4850	en
 attempt	attempt	4850	en
 airport	airport	4840	en
@@ -5426,7 +5428,6 @@ adolescent	adolescent	3580	en
 amidst	amidst	3560	en
 atleast	atleast	3540	en
 asphalt	asphalt	3530	en
-arent	arent	3520	en
 advert	advert	3460	en
 abbot	abbot	3430	en
 ascent	ascent	3420	en
@@ -5439,7 +5440,6 @@ affluent	affluent	3370	en
 antitrust	antitrust	3370	en
 anarchist	anarchist	3360	en
 avant	avant	3360	en
-aint	aint	3340	en
 adept	adept	3330	en
 afloat	afloat	3330	en
 antagonist	antagonist	3320	en
@@ -14138,6 +14138,7 @@ cookie	cookie	4070	en
 curse	curse	4070	en
 chile	chile	4060	en
 cigarette	cigarette	4060	en
+couldve	could've	4060	en
 clarke	clarke	4050	en
 cope	cope	4040	en
 cease	cease	4030	en
@@ -14670,7 +14671,6 @@ chippendale	chippendale	2420	en
 claymore	claymore	2420	en
 collate	collate	2420	en
 consecrate	consecrate	2420	en
-couldve	couldve	2420	en
 cackle	cackle	2410	en
 calliope	calliope	2410	en
 circe	circe	2410	en
@@ -20002,11 +20002,13 @@ corvinus	corvinus	1890	en
 cpcs	cpcs	1890	en
 croods	croods	1890	en
 cursors	cursors	1890	en
+cant	can't	5800	en
 court	court	5410	en
 current	current	5270	en
 cost	cost	5240	en
 cut	cut	5240	en
 cannot	cannot	5110	en
+couldnt	couldn't	5090	en
 content	content	5000	en
 credit	credit	5000	en
 contact	contact	4990	en
@@ -20114,7 +20116,6 @@ chestnut	chestnut	3460	en
 confinement	confinement	3460	en
 checklist	checklist	3450	en
 clement	clement	3430	en
-couldnt	couldnt	3430	en
 compliant	compliant	3420	en
 cohort	cohort	3400	en
 culprit	culprit	3400	en
@@ -25767,14 +25768,16 @@ doos	doos	1890	en
 doughs	doughs	1890	en
 duggars	duggars	1890	en
 dustbins	dustbins	1890	en
+dont	don't	6200	en
+didnt	didn't	5680	en
 different	different	5590	en
+doesnt	doesn't	5530	en
 development	development	5310	en
 department	department	5230	en
 difficult	difficult	5070	en
 district	district	5040	en
 direct	direct	4910	en
 doubt	doubt	4900	en
-dont	dont	4740	en
 debt	debt	4690	en
 draft	draft	4610	en
 diet	diet	4570	en
@@ -25795,10 +25798,8 @@ dirt	dirt	4240	en
 dominant	dominant	4230	en
 dealt	dealt	4200	en
 distant	distant	4190	en
-didnt	didnt	4180	en
 deficit	deficit	4060	en
 detect	detect	4050	en
-doesnt	doesnt	4050	en
 dot	dot	4050	en
 disappointment	disappointment	4010	en
 defendant	defendant	3980	en
@@ -29103,6 +29104,7 @@ earns	earns	3560	en
 emergencies	emergencies	3560	en
 enthusiasts	enthusiasts	3560	en
 escapes	escapes	3560	en
+everythings	everything's	3560	en
 endings	endings	3540	en
 energies	energies	3540	en
 exits	exits	3530	en
@@ -29586,7 +29588,6 @@ explosiveness	explosiveness	2140	en
 epiphanies	epiphanies	2130	en
 equis	equis	2130	en
 evaders	evaders	2130	en
-everythings	everythings	2130	en
 ewoks	ewoks	2130	en
 edens	edens	2120	en
 efs	efs	2120	en
@@ -38309,6 +38310,7 @@ hold	hold	5190	en
 husband	husband	5000	en
 helped	helped	4880	en
 hundred	hundred	4710	en
+hed	he'd	4570	en
 headed	headed	4550	en
 hollywood	hollywood	4520	en
 howard	howard	4480	en
@@ -38367,6 +38369,7 @@ hound	hound	3430	en
 hugged	hugged	3430	en
 handicapped	handicapped	3420	en
 headquartered	headquartered	3420	en
+howd	how'd	3410	en
 humiliated	humiliated	3410	en
 hinted	hinted	3400	en
 handheld	handheld	3360	en
@@ -38452,7 +38455,6 @@ hyland	hyland	2680	en
 hazzard	hazzard	2670	en
 hamad	hamad	2660	en
 hemmed	hemmed	2660	en
-hed	hed	2650	en
 hotbed	hotbed	2650	en
 hertford	hertford	2640	en
 hustled	hustled	2640	en
@@ -39628,6 +39630,7 @@ hotel	hotel	4950	en
 hall	hall	4870	en
 hill	hill	4820	en
 historical	historical	4690	en
+hell	he'll	4540	en
 helpful	helpful	4430	en
 heal	heal	4120	en
 handful	handful	4110	en
@@ -40696,9 +40699,11 @@ hostgator	hostgator	1900	en
 hydrometer	hydrometer	1900	en
 his	his	6510	en
 has	has	6370	en
+hes	he's	5600	en
 hours	hours	5400	en
 hands	hands	5160	en
 happens	happens	4960	en
+heres	here's	4910	en
 helps	helps	4740	en
 houses	houses	4720	en
 homes	homes	4690	en
@@ -40736,7 +40741,7 @@ holders	holders	4020	en
 hats	hats	4010	en
 holdings	holdings	4000	en
 hers	hers	3970	en
-hes	hes	3960	en
+hows	how's	3950	en
 hunters	hunters	3940	en
 headlines	headlines	3910	en
 hawks	hawks	3890	en
@@ -40861,7 +40866,6 @@ hounds	hounds	3190	en
 handbags	handbags	3180	en
 heaters	heaters	3180	en
 hebrews	hebrews	3180	en
-heres	heres	3180	en
 hogwarts	hogwarts	3180	en
 hardness	hardness	3170	en
 helpers	helpers	3170	en
@@ -40991,7 +40995,6 @@ hargreaves	hargreaves	2760	en
 herbicides	herbicides	2760	en
 hibiscus	hibiscus	2760	en
 hitchens	hitchens	2760	en
-hows	hows	2760	en
 hallows	hallows	2750	en
 hangovers	hangovers	2750	en
 hibs	hibs	2750	en
@@ -41489,14 +41492,17 @@ handcrafts	handcrafts	1890	en
 hit	hit	5370	en
 heart	heart	5310	en
 hot	hot	5160	en
+havent	haven't	5110	en
 hurt	hurt	4940	en
 heat	heat	4860	en
 highest	highest	4860	en
 host	host	4770	en
 honest	honest	4730	en
+hasnt	hasn't	4710	en
 hat	hat	4530	en
 height	height	4530	en
 hunt	hunt	4490	en
+hadnt	hadn't	4400	en
 habit	habit	4240	en
 highlight	highlight	4210	en
 hardest	hardest	4100	en
@@ -41520,7 +41526,6 @@ heavyweight	heavyweight	3620	en
 happiest	happiest	3590	en
 haunt	haunt	3540	en
 headset	headset	3540	en
-havent	havent	3500	en
 hobart	hobart	3430	en
 hesitant	hesitant	3410	en
 heartfelt	heartfelt	3400	en
@@ -41546,7 +41551,6 @@ hatchet	hatchet	3080	en
 handset	handset	3070	en
 humanist	humanist	3070	en
 hearst	hearst	3060	en
-hasnt	hasnt	3050	en
 hackett	hackett	3040	en
 hideout	hideout	3040	en
 hoyt	hoyt	3040	en
@@ -41616,7 +41620,6 @@ howlett	howlett	2360	en
 hartnett	hartnett	2350	en
 herbalist	herbalist	2350	en
 havnt	havnt	2320	en
-hadnt	hadnt	2300	en
 hastert	hastert	2280	en
 horticulturist	horticulturist	2280	en
 hellbent	hellbent	2270	en
@@ -42361,6 +42364,7 @@ idrc	idrc	1910	en
 immunogenic	immunogenic	1910	en
 intraspecific	intraspecific	1900	en
 isostatic	isostatic	1900	en
+id	I'd	5360	en
 instead	instead	5240	en
 involved	involved	5100	en
 included	included	5030	en
@@ -42389,6 +42393,7 @@ implemented	implemented	4230	en
 incorporated	incorporated	4200	en
 influenced	influenced	4200	en
 invested	invested	4190	en
+itd	it'd	4190	en
 illustrated	illustrated	4170	en
 invented	invented	4170	en
 imposed	imposed	4160	en
@@ -42537,7 +42542,6 @@ inebriated	inebriated	2640	en
 insipid	insipid	2640	en
 ionized	ionized	2620	en
 itemized	itemized	2620	en
-itd	itd	2610	en
 inconvenienced	inconvenienced	2600	en
 indoctrinated	indoctrinated	2600	en
 inflected	inflected	2590	en
@@ -42644,6 +42648,7 @@ itched	itched	1930	en
 iodized	iodized	1920	en
 iyad	iyad	1910	en
 ingold	ingold	1900	en
+ive	I've	5720	en
 issue	issue	5230	en
 include	include	5210	en
 inside	inside	5190	en
@@ -42686,7 +42691,6 @@ interactive	interactive	4060	en
 intimate	intimate	4060	en
 ignorance	ignorance	4040	en
 intermediate	intermediate	4040	en
-ive	ive	4020	en
 indie	indie	4000	en
 inspire	inspire	4000	en
 inappropriate	inappropriate	3990	en
@@ -43491,6 +43495,7 @@ ibook	ibook	1990	en
 interlink	interlink	1970	en
 iwork	iwork	1930	en
 itk	itk	1920	en
+ill	I'll	5430	en
 international	international	5360	en
 individual	individual	5000	en
 israel	israel	4770	en
@@ -43499,6 +43504,7 @@ initial	initial	4720	en
 industrial	industrial	4710	en
 illegal	illegal	4680	en
 internal	internal	4660	en
+itll	it'll	4580	en
 ideal	ideal	4440	en
 il	il	4320	en
 intellectual	intellectual	4300	en
@@ -43554,7 +43560,6 @@ ineffectual	ineffectual	2830	en
 isobel	isobel	2830	en
 interstitial	interstitial	2780	en
 infidel	infidel	2770	en
-itll	itll	2730	en
 immanuel	immanuel	2700	en
 intracranial	intracranial	2690	en
 intramural	intramural	2680	en
@@ -43619,7 +43624,7 @@ insecticidal	insecticidal	1980	en
 intranasal	intranasal	1980	en
 icefall	icefall	1950	en
 intell	intell	1940	en
-im	im	4690	en
+im	I'm	6150	en
 item	item	4570	en
 islam	islam	4420	en
 instagram	instagram	4330	en
@@ -44195,6 +44200,7 @@ ifor	ifor	1940	en
 ingemar	ingemar	1940	en
 inflator	inflator	1920	en
 is	is	7070	en
+its	it's	6330	en
 its	its	6140	en
 issues	issues	5190	en
 includes	includes	4960	en
@@ -44813,6 +44819,7 @@ insureds	insureds	1900	en
 ivers	ivers	1900	en
 it	it	6950	en
 important	important	5440	en
+isnt	isn't	5410	en
 interest	interest	5170	en
 internet	internet	5060	en
 independent	independent	4930	en
@@ -44844,7 +44851,6 @@ intact	intact	3980	en
 irrelevant	irrelevant	3980	en
 incorrect	incorrect	3940	en
 imprisonment	imprisonment	3890	en
-isnt	isnt	3890	en
 instinct	instinct	3860	en
 inherent	inherent	3830	en
 interpret	interpret	3810	en
@@ -51461,6 +51467,7 @@ leveler	leveler	1900	en
 loker	loker	1900	en
 less	less	5490	en
 looks	looks	5360	en
+lets	let's	5160	en
 lives	lives	5140	en
 loss	loss	5070	en
 levels	levels	4970	en
@@ -53893,6 +53900,7 @@ morse	morse	3520	en
 microscope	microscope	3500	en
 moe	moe	3500	en
 malware	malware	3490	en
+mustve	must've	3490	en
 michele	michele	3480	en
 mule	mule	3440	en
 migrate	migrate	3430	en
@@ -53923,6 +53931,7 @@ maguire	maguire	3300	en
 mcbride	mcbride	3300	en
 mirage	mirage	3290	en
 mozambique	mozambique	3290	en
+mightve	might've	3280	en
 midwife	midwife	3270	en
 monologue	monologue	3270	en
 monoxide	monoxide	3270	en
@@ -61012,6 +61021,7 @@ nerds	nerds	3360	en
 nemesis	nemesis	3340	en
 nationalities	nationalities	3310	en
 nods	nods	3300	en
+nothings	nothing's	3300	en
 nes	nes	3290	en
 nephews	nephews	3270	en
 nouns	nouns	3260	en
@@ -61090,7 +61100,6 @@ northerners	northerners	2790	en
 nts	nts	2790	en
 nickels	nickels	2780	en
 navigators	navigators	2770	en
-nothings	nothings	2770	en
 neutrinos	neutrinos	2760	en
 nips	nips	2760	en
 nus	nus	2760	en
@@ -62716,6 +62725,7 @@ ondrej	ondrej	2120	en
 ok	ok	5140	en
 oak	oak	4180	en
 outlook	outlook	4070	en
+oclock	o'clock	4040	en
 outbreak	outbreak	3990	en
 overlook	overlook	3530	en
 outback	outback	3210	en
@@ -62733,7 +62743,6 @@ outflank	outflank	2250	en
 overcook	overcook	2180	en
 overstock	overstock	2170	en
 omsk	omsk	2160	en
-oclock	oclock	2070	en
 odenkirk	odenkirk	2070	en
 outrank	outrank	2020	en
 orpik	orpik	2010	en
@@ -77091,6 +77100,7 @@ stepped	stepped	4200	en
 situated	situated	4190	en
 spotted	spotted	4190	en
 sustained	sustained	4190	en
+shed	she'd	4180	en
 stored	stored	4180	en
 stressed	stressed	4180	en
 salad	salad	4150	en
@@ -78064,6 +78074,7 @@ shade	shade	4160	en
 sometime	sometime	4160	en
 sunshine	sunshine	4160	en
 stake	stake	4150	en
+shouldve	should've	4090	en
 statue	statue	4090	en
 subtle	subtle	4080	en
 scare	scare	4070	en
@@ -78580,7 +78591,6 @@ soule	soule	2410	en
 soundscape	soundscape	2410	en
 stacie	stacie	2410	en
 switchblade	switchblade	2410	en
-shouldve	shouldve	2400	en
 soundstage	soundstage	2400	en
 springdale	springdale	2400	en
 supernovae	supernovae	2400	en
@@ -80580,6 +80590,7 @@ symbol	symbol	4310	en
 seal	seal	4300	en
 serial	serial	4230	en
 samuel	samuel	4190	en
+shell	she'll	4180	en
 structural	structural	4180	en
 scandal	scandal	4170	en
 statistical	statistical	4140	en
@@ -83102,6 +83113,7 @@ says	says	5490	en
 series	series	5350	en
 services	services	5310	en
 sometimes	sometimes	5280	en
+shes	she's	5260	en
 students	students	5250	en
 seems	seems	5240	en
 shows	shows	5230	en
@@ -83376,7 +83388,6 @@ slips	slips	3610	en
 shines	shines	3600	en
 sacks	sacks	3590	en
 seizures	seizures	3590	en
-shes	shes	3590	en
 socialists	socialists	3590	en
 soviets	soviets	3590	en
 suns	suns	3590	en
@@ -83481,6 +83492,7 @@ shameless	shameless	3390	en
 skeletons	skeletons	3390	en
 skulls	skulls	3390	en
 slows	slows	3390	en
+somethings	something's	3390	en
 squirrels	squirrels	3390	en
 subconscious	subconscious	3390	en
 safeguards	safeguards	3380	en
@@ -83645,7 +83657,6 @@ serbs	serbs	3120	en
 sikhs	sikhs	3120	en
 skyscrapers	skyscrapers	3120	en
 slurs	slurs	3120	en
-somethings	somethings	3120	en
 spotless	spotless	3120	en
 strenuous	strenuous	3120	en
 strives	strives	3120	en
@@ -85164,6 +85175,7 @@ sit	sit	4900	en
 spot	spot	4890	en
 smart	smart	4830	en
 seat	seat	4820	en
+shouldnt	shouldn't	4820	en
 spirit	spirit	4790	en
 shut	shut	4780	en
 suggest	suggest	4750	en
@@ -85281,7 +85293,6 @@ squirt	squirt	3220	en
 stuttgart	stuttgart	3200	en
 sacrament	sacrament	3190	en
 sweatshirt	sweatshirt	3190	en
-shouldnt	shouldnt	3180	en
 slant	slant	3180	en
 spelt	spelt	3180	en
 scariest	scariest	3170	en
@@ -87035,6 +87046,7 @@ trend	trend	4510	en
 tested	tested	4480	en
 tied	tied	4470	en
 thread	thread	4440	en
+theyd	they'd	4390	en
 threatened	threatened	4360	en
 transferred	transferred	4360	en
 talented	talented	4300	en
@@ -87071,6 +87083,7 @@ traced	traced	3800	en
 tortured	tortured	3780	en
 tended	tended	3750	en
 terminated	terminated	3750	en
+thatd	that'd	3750	en
 tossed	tossed	3750	en
 tasted	tasted	3700	en
 tapped	tapped	3690	en
@@ -87111,6 +87124,7 @@ trafford	trafford	3350	en
 toad	toad	3340	en
 tilted	tilted	3330	en
 teased	teased	3320	en
+thered	there'd	3290	en
 tightened	tightened	3290	en
 tinted	tinted	3270	en
 toasted	toasted	3260	en
@@ -87271,7 +87285,6 @@ twitched	twitched	2330	en
 tinkered	tinkered	2320	en
 tailwind	tailwind	2310	en
 transacted	transacted	2310	en
-theyd	theyd	2270	en
 thumbed	thumbed	2270	en
 trackpad	trackpad	2270	en
 trapezoid	trapezoid	2270	en
@@ -87326,7 +87339,6 @@ tubed	tubed	2010	en
 tancred	tancred	2000	en
 thomond	thomond	2000	en
 tableland	tableland	1990	en
-thatd	thatd	1990	en
 tcdd	tcdd	1980	en
 taxied	taxied	1970	en
 transfused	transfused	1970	en
@@ -87360,6 +87372,7 @@ these	these	6040	en
 take	take	5920	en
 those	those	5900	en
 three	three	5780	en
+theyre	they're	5470	en
 true	true	5400	en
 type	type	5270	en
 trade	trade	5120	en
@@ -87369,6 +87382,7 @@ therefore	therefore	4870	en
 tree	tree	4850	en
 twice	twice	4840	en
 trouble	trouble	4790	en
+theyve	they've	4760	en
 taste	taste	4730	en
 terrible	terrible	4710	en
 temperature	temperature	4640	en
@@ -87434,7 +87448,6 @@ turbulence	turbulence	3550	en
 truce	truce	3520	en
 tae	tae	3510	en
 tyre	tyre	3510	en
-theyre	theyre	3490	en
 trance	trance	3490	en
 throttle	throttle	3470	en
 tentative	tentative	3450	en
@@ -87585,7 +87598,6 @@ telemedicine	telemedicine	2620	en
 tulle	tulle	2620	en
 tisdale	tisdale	2610	en
 telluride	telluride	2600	en
-theyve	theyve	2600	en
 thule	thule	2600	en
 tafe	tafe	2590	en
 tarte	tarte	2590	en
@@ -88582,6 +88594,7 @@ trial	trial	4870	en
 traditional	traditional	4840	en
 till	till	4790	en
 technical	technical	4750	en
+theyll	they'll	4710	en
 typical	typical	4590	en
 tool	tool	4560	en
 tall	tall	4520	en
@@ -88597,6 +88610,7 @@ til	til	4030	en
 tribal	tribal	4030	en
 theoretical	theoretical	4010	en
 tactical	tactical	3970	en
+thatll	that'll	3960	en
 towel	towel	3940	en
 thankful	thankful	3930	en
 territorial	territorial	3910	en
@@ -88616,6 +88630,7 @@ temporal	temporal	3630	en
 turmoil	turmoil	3520	en
 terrestrial	terrestrial	3480	en
 topical	topical	3450	en
+therell	there'll	3420	en
 truthful	truthful	3420	en
 treadmill	treadmill	3350	en
 textual	textual	3340	en
@@ -88664,7 +88679,6 @@ titanfall	titanfall	2630	en
 tactful	tactful	2590	en
 toenail	toenail	2590	en
 tannehill	tannehill	2580	en
-theyll	theyll	2570	en
 tyrrell	tyrrell	2570	en
 tubal	tubal	2560	en
 topsoil	topsoil	2550	en
@@ -88751,7 +88765,6 @@ transcultural	transcultural	1950	en
 tyl	tyl	1950	en
 tetragonal	tetragonal	1940	en
 texel	texel	1930	en
-thatll	thatll	1920	en
 thel	thel	1920	en
 tindal	tindal	1920	en
 topol	topol	1920	en
@@ -89772,8 +89785,10 @@ thunderer	thunderer	1900	en
 trocar	trocar	1900	en
 trochanter	trochanter	1900	en
 this	this	6820	en
+thats	that's	5860	en
 things	things	5740	en
 times	times	5560	en
+theres	there's	5540	en
 thanks	thanks	5430	en
 takes	takes	5180	en
 themselves	themselves	5160	en
@@ -89799,7 +89814,6 @@ tickets	tickets	4600	en
 tools	tools	4590	en
 tips	tips	4580	en
 tries	tries	4530	en
-thats	thats	4520	en
 techniques	techniques	4510	en
 tears	tears	4470	en
 tons	tons	4460	en
@@ -89870,7 +89884,6 @@ trails	trails	3920	en
 tablets	tablets	3910	en
 thirds	thirds	3910	en
 toss	toss	3910	en
-theres	theres	3900	en
 titans	titans	3900	en
 tomatoes	tomatoes	3900	en
 tens	tens	3890	en
@@ -95200,6 +95213,7 @@ wood	wood	4780	en
 watched	watched	4720	en
 walked	walked	4670	en
 worried	worried	4630	en
+wed	we'd	4440	en
 ward	ward	4370	en
 wounded	wounded	4320	en
 weed	weed	4270	en
@@ -95225,6 +95239,7 @@ weighted	weighted	3680	en
 wed	wed	3660	en
 withstand	withstand	3650	en
 woodland	woodland	3650	en
+whod	who'd	3630	en
 wrecked	wrecked	3620	en
 waved	waved	3540	en
 watershed	watershed	3530	en
@@ -95262,6 +95277,7 @@ wield	wield	3210	en
 waged	waged	3200	en
 wasteland	wasteland	3190	en
 westfield	westfield	3190	en
+whyd	why'd	3190	en
 wildcard	wildcard	3170	en
 weathered	weathered	3150	en
 widowed	widowed	3150	en
@@ -95276,6 +95292,7 @@ wayward	wayward	3090	en
 wronged	wronged	3090	en
 waxed	waxed	3080	en
 wad	wad	3060	en
+whered	where'd	3060	en
 westbound	westbound	3040	en
 wilfred	wilfred	3040	en
 warhead	warhead	3030	en
@@ -95466,9 +95483,11 @@ where	where	6000	en
 while	while	5860	en
 white	white	5510	en
 whole	whole	5460	en
+were	we're	5400	en
 wife	wife	5230	en
 website	website	5090	en
 whose	whose	5070	en
+weve	we've	5040	en
 wrote	wrote	5040	en
 write	write	5030	en
 welcome	welcome	4990	en
@@ -95484,6 +95503,7 @@ wage	wage	4440	en
 welfare	welfare	4430	en
 wire	wire	4430	en
 wayne	wayne	4370	en
+wouldve	would've	4360	en
 wildlife	wildlife	4330	en
 wore	wore	4290	en
 woke	woke	4220	en
@@ -95503,6 +95523,7 @@ wee	wee	3870	en
 whore	whore	3860	en
 wardrobe	wardrobe	3800	en
 worthwhile	worthwhile	3740	en
+whove	who've	3700	en
 wedge	wedge	3620	en
 wartime	wartime	3590	en
 ware	ware	3550	en
@@ -95557,7 +95578,6 @@ watanabe	watanabe	2840	en
 wane	wane	2830	en
 wellcome	wellcome	2830	en
 whittle	whittle	2830	en
-weve	weve	2820	en
 whiteside	whiteside	2820	en
 whitmore	whitmore	2820	en
 wilkie	wilkie	2800	en
@@ -95574,7 +95594,6 @@ windermere	windermere	2710	en
 winkle	winkle	2710	en
 waistline	waistline	2700	en
 wheelie	wheelie	2690	en
-wouldve	wouldve	2690	en
 warlike	warlike	2680	en
 wale	wale	2670	en
 wilberforce	wilberforce	2670	en
@@ -96176,6 +96195,7 @@ whelk	whelk	1900	en
 will	will	6450	en
 well	well	6030	en
 wall	wall	5040	en
+well	we'll	4890	en
 wonderful	wonderful	4850	en
 wheel	wheel	4500	en
 withdrawal	withdrawal	4050	en
@@ -96183,6 +96203,7 @@ wool	wool	3910	en
 waterfall	waterfall	3540	en
 wal	wal	3520	en
 wrongful	wrongful	3330	en
+wholl	who'll	3320	en
 whitehall	whitehall	3310	en
 wil	wil	3280	en
 wasteful	wasteful	3270	en
@@ -96898,9 +96919,11 @@ was	was	6820	en
 works	works	5290	en
 words	words	5250	en
 wants	wants	5240	en
+whats	what's	5200	en
 weeks	weeks	5190	en
 ways	ways	5060	en
 workers	workers	4950	en
+whos	who's	4850	en
 weapons	weapons	4750	en
 windows	windows	4720	en
 wins	wins	4700	en
@@ -96931,6 +96954,7 @@ wireless	wireless	4200	en
 weakness	weakness	4190	en
 worries	worries	4160	en
 watches	watches	4100	en
+wheres	where's	4090	en
 wears	wears	4080	en
 wives	wives	4080	en
 wounds	wounds	4070	en
@@ -96940,7 +96964,6 @@ wolves	wolves	4010	en
 wonders	wonders	4000	en
 writings	writings	3980	en
 wilderness	wilderness	3950	en
-whats	whats	3880	en
 workshops	workshops	3880	en
 weights	weights	3860	en
 wires	wires	3850	en
@@ -97034,7 +97057,6 @@ wondrous	wondrous	3120	en
 wrecks	wrecks	3090	en
 walgreens	walgreens	3080	en
 webs	webs	3080	en
-whos	whos	3060	en
 worshippers	worshippers	3060	en
 wallpapers	wallpapers	3050	en
 wanders	wanders	3040	en
@@ -97106,7 +97128,6 @@ watercolors	watercolors	2680	en
 watermelons	watermelons	2680	en
 watersheds	watersheds	2680	en
 woolworths	woolworths	2680	en
-wheres	wheres	2670	en
 wiggles	wiggles	2670	en
 worsens	worsens	2670	en
 wags	wags	2660	en
@@ -97410,9 +97431,13 @@ want	want	6040	en
 without	without	5690	en
 went	went	5500	en
 wait	wait	5350	en
+wont	won't	5340	en
 west	west	5290	en
+wasnt	wasn't	5280	en
+wouldnt	wouldn't	5180	en
 weight	weight	5020	en
 worst	worst	4930	en
+werent	weren't	4680	en
 wet	wet	4540	en
 whilst	whilst	4380	en
 warrant	warrant	4240	en
@@ -97426,14 +97451,12 @@ waist	waist	3960	en
 wit	wit	3960	en
 walmart	walmart	3950	en
 walt	walt	3900	en
-wasnt	wasnt	3690	en
 watt	watt	3690	en
 weakest	weakest	3590	en
 wicket	wicket	3590	en
 walnut	walnut	3560	en
 waterfront	waterfront	3560	en
 wyatt	wyatt	3560	en
-wouldnt	wouldnt	3490	en
 wat	wat	3440	en
 wrought	wrought	3440	en
 witchcraft	witchcraft	3420	en
@@ -97460,7 +97483,6 @@ westport	westport	2970	en
 widget	widget	2960	en
 witt	witt	2960	en
 worksheet	worksheet	2930	en
-werent	werent	2920	en
 wort	wort	2880	en
 welt	welt	2870	en
 wisest	wisest	2870	en
@@ -98063,13 +98085,13 @@ yc	yc	2460	en
 yankovic	yankovic	2390	en
 yogic	yogic	2300	en
 yac	yac	1920	en
+youd	you'd	4830	en
 yard	yard	4570	en
 yield	yield	4160	en
 yelled	yelled	3760	en
 yielded	yielded	3510	en
 yd	yd	3010	en
 yanked	yanked	2980	en
-youd	youd	2820	en
 youngblood	youngblood	2600	en
 yearned	yearned	2580	en
 yad	yad	2470	en
@@ -98083,17 +98105,17 @@ yod	yod	2060	en
 yelped	yelped	2040	en
 yazid	yazid	2030	en
 yellowcard	yellowcard	1920	en
+youre	you're	5870	en
+youve	you've	5130	en
 youtube	youtube	4660	en
 ye	ye	4250	en
 yorkshire	yorkshire	4040	en
 yale	yale	3880	en
-youre	youre	3860	en
 yankee	yankee	3600	en
 yvonne	yvonne	3290	en
 yee	yee	3280	en
 yellowstone	yellowstone	3280	en
 yosemite	yosemite	3280	en
-youve	youve	3140	en
 yoke	yoke	3090	en
 yvette	yvette	3020	en
 yorke	yorke	2880	en
@@ -98266,10 +98288,10 @@ yorick	yorick	2200	en
 yk	yk	2110	en
 yok	yok	2030	en
 yakutsk	yakutsk	1970	en
+youll	you'll	5220	en
 yell	yell	3850	en
 youthful	youthful	3580	en
 yall	yall	3210	en
-youll	youll	3210	en
 yeovil	yeovil	2720	en
 yul	yul	2560	en
 yl	yl	2520	en

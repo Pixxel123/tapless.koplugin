@@ -28,15 +28,15 @@ anywhere in the suggestion row.
 | Sentences, first choice (670 swipes) | 54% | 71% |
 | Sentences, in the row | 64% | 77% |
 | Random words, first choice (212 swipes) | 40% | 62% |
-| Random words, in the row | 48% | 71% |
+| Random words, in the row | 48% | 70% |
 | Random words of 8 or more letters, first choice | 14% | 41% |
 | Swipes that didn't start on the word's first key, first choice | 0% | 30% |
 | Clean generated swipes, common words | 96% | 98% |
-| Clean generated swipes, mid-frequency words | 93% | 96% |
+| Clean generated swipes, mid-frequency words | 93% | 95% |
 | Clean generated swipes, rare words | 88% | 86% |
 
-On the sentences, the fork gets 120 swipes right that upstream got wrong,
-and 3 wrong that upstream got right. On the random words it's 51 and 3.
+On the sentences, the fork gets 121 swipes right that upstream got wrong,
+and 5 wrong that upstream got right. On the random words it's 51 and 3.
 
 Rare words are slightly worse. That's a deliberate trade: common words
 count for more, so the odd rare word now loses to a common one with a
@@ -92,7 +92,7 @@ device would have learned.
 The McNemar test only looks at the swipes where the two versions disagree.
 If a change made no difference, each of those would be a coin toss between
 fixed and broken, and p is the chance of a split at least as uneven as the
-one seen. 120 fixed against 3 broken has p around 6e-32.
+one seen. 121 fixed against 5 broken has p around 6e-30.
 
 </details>
 
@@ -108,6 +108,7 @@ one seen. 120 fixed against 3 broken has p around 6e-32.
 - Spellings that only repeat letters ("wee", "weee") no longer fill the
   row.
 - Swipes that start on the number row type a word, not a digit.
+- Contractions come out with their apostrophes: "dont" types "don't".
 
 <details>
 <summary><b>How recognition works now</b></summary>
@@ -158,6 +159,15 @@ reach another letter, is left to KOReader, so digits and the characters
 you get by sliding off a digit key still work. In the sessions recorded
 before this change, 27 swipes started on the number row and typed a digit
 or a symbol instead of a word.
+
+**Contractions.** The English word list came with no words holding an
+apostrophe, so swiping "don't" typed "dont", and "they" only suggested
+"theyre". There's no apostrophe key to swipe over, so a contraction is
+found by its letters and typed with its apostrophe: "dont" gives "don't",
+"theyre" gives "they're", "im" gives "I'm". Where the letters are a word
+of their own too, both stay: "were" and "we're", "well" and "we'll", "its"
+and "it's". Which one comes first depends on how common each is and the
+word before it.
 
 #### Technical details
 
@@ -269,6 +279,17 @@ handed back to KOReader untouched.
 letters are collapsed ("we", "wee"), and no word with a letter three times
 in a row.
 
+**Contractions.** Every word list entry has two spellings: the letters it's
+matched on and the word it types. `tools/add_contractions.py` adds 68
+contractions from `tools/contractions_en.tsv` under their letters, so
+`dont` types `don't`, at wordfreq's frequency for the real spelling
+("don't" is 6.2 on the Zipf scale, "dont" typed without the apostrophe
+only 4.7). The apostrophe-less spelling is dropped unless it's a word of
+its own (were, well, its, ill, id, hell, shell, shed, wed, lets, cant,
+wont). On the recorded and generated swipes this changed 4 of 4500 clean
+swipes to a common contraction with a similar path ("threats" to "that's",
+"ice" to "I've") and 1 recorded swipe, and fixed 1.
+
 </details>
 
 ### Learning
@@ -292,7 +313,9 @@ are saved in KOReader's settings.
 **Tapped words.** A word you tap out and finish with a space or
 punctuation is counted once and learned after the word before it, the
 same as a swiped word you keep. Only dictionary and personal words
-count, so typos aren't learned.
+count, so typos aren't learned. An apostrophe is part of the word, so
+"don't" is learned whole, never "don" or "t"; a hyphenated word like
+"well-known" isn't learned at all.
 
 **Word pairs.** Tapless already learned which word you type after which.
 The fork adds a table of common word pairs for English, so this works from
@@ -304,11 +327,11 @@ only applies when the previous word is followed by just a space, so after
 a full stop or a comma nothing is assumed.
 
 On the sentence sessions the table alone took first choice from 68% to
-71%, with 17 swipes fixed and none broken. The fixes are the look-alike
+71%, with 18 swipes fixed and 1 broken. The fixes are the look-alike
 mistakes: "tu" for "to", "will" for "well", "while" for "whole", "sin" for
 "sun".
 
-The table is 1.6 MB and sits next to the English dictionary. Only the
+The table is 1.8 MB and sits next to the English dictionary. Only the
 part for the previous word is read, when it's needed. It was counted from
 the English sentences of [Tatoeba](https://tatoeba.org) (CC BY 2.0 FR) by
 `tools/build_word_pairs.py`, leaving out any sentence that shares four
@@ -380,8 +403,9 @@ bonus = 1000 × log10( P(word | previous word) / P(word) )
 That's the pointwise mutual information in frequency units: how much
 likelier the word is right after the previous word than in general. It's
 capped at 3000, and pairs seen fewer than 3 times or earning less than 300
-are dropped. Each previous word keeps its 64 most frequent followers,
-140,000 pairs in all.
+are dropped. Each previous word keeps its 96 most frequent followers,
+157,000 pairs in all. Contractions count as words, both before and after:
+"i'm → afraid", "we → don't".
 
 **The pair file.** The table is stored like the dictionary: one text
 file, plus an index of where each part starts.
@@ -390,7 +414,7 @@ file, plus an index of where each part starts.
 flowchart LR
     A["Previous word: the"] --> B["Index: bucket 'th'<br/>offset and length"]
     B --> C["Read that part of<br/>words.pairs.tsv"]
-    C --> D["Find the line<br/>the → beach:1309 best:1130 ..."]
+    C --> D["Find the line<br/>the → accident:1065 air:1031 ..."]
     D --> E["Keep the parsed line<br/>last 256 words cached"]
 ```
 

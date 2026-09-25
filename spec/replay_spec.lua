@@ -23,6 +23,11 @@ it("replays a recorded swipe to the intended word", function()
     end
 end)
 
+it("types a contraction with its apostrophe", function()
+    local attempt = attemptFor("dont")
+    T.eq(Replay.run(plugin, attempt).words[1], "don't")
+end)
+
 it("reports a one-letter trace as short", function()
     local attempt = attemptFor("water")
     attempt.events = { attempt.events[1] }

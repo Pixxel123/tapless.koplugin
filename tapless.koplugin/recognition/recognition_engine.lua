@@ -218,9 +218,12 @@ function RecognitionEngine:completeWord(options)
     local results, seen = {}, {}
     local function consider(entry, personal)
         local word = entry.word
-        -- Dictionary and personal words are stored lowercase.
-        if not word or string.sub(entry.signature or "", 1, #prefix) ~= prefix
-                or seen[word] or word == typed or tripled(word)
+        local signature = entry.signature or ""
+        -- Only a word with just the typed letters can be the word typed;
+        -- only such a word needs lowering ("I'm" for "i'm").
+        if not word or string.sub(signature, 1, #prefix) ~= prefix
+                or (#signature == #prefix and word:lower() == typed)
+                or seen[word] or tripled(word)
                 or (entry.lang and entry.lang ~= dictionary
                     and entry.lang ~= data_lang)
                 or (self.blocked_words

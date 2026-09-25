@@ -1,0 +1,74 @@
+# English contractions for the bundled dictionary, added by
+# tools/add_contractions.py. Zipf frequencies from wordfreq 3.1.1
+# (https://github.com/rspeer/wordfreq). The last column says
+# whether the spelling without the apostrophe stays a word of
+# its own (were, well, its) or goes (dont, theyre).
+# word	zipf	plain
+it's	6.33	keep
+don't	6.20	drop
+I'm	6.15	drop
+you're	5.87	drop
+that's	5.86	drop
+can't	5.80	keep
+I've	5.72	drop
+didn't	5.68	drop
+he's	5.60	drop
+there's	5.54	drop
+doesn't	5.53	drop
+they're	5.47	drop
+I'll	5.43	keep
+isn't	5.41	drop
+we're	5.40	keep
+I'd	5.36	keep
+won't	5.34	keep
+wasn't	5.28	drop
+she's	5.26	drop
+you'll	5.22	drop
+what's	5.20	drop
+wouldn't	5.18	drop
+let's	5.16	keep
+you've	5.13	drop
+haven't	5.11	drop
+couldn't	5.09	drop
+aren't	5.05	drop
+we've	5.04	drop
+here's	4.91	drop
+we'll	4.89	keep
+ain't	4.88	drop
+who's	4.85	drop
+you'd	4.83	drop
+shouldn't	4.82	drop
+they've	4.76	drop
+hasn't	4.71	drop
+they'll	4.71	drop
+weren't	4.68	drop
+it'll	4.58	drop
+he'd	4.57	drop
+he'll	4.54	keep
+we'd	4.44	keep
+hadn't	4.40	drop
+they'd	4.39	drop
+would've	4.36	drop
+it'd	4.19	drop
+she'd	4.18	keep
+she'll	4.18	keep
+should've	4.09	drop
+where's	4.09	drop
+could've	4.06	drop
+o'clock	4.04	drop
+that'll	3.96	drop
+how's	3.95	drop
+that'd	3.75	drop
+who've	3.70	drop
+who'd	3.63	drop
+everything's	3.56	drop
+must've	3.49	drop
+there'll	3.42	drop
+how'd	3.41	drop
+something's	3.39	drop
+who'll	3.32	drop
+nothing's	3.30	drop
+there'd	3.29	drop
+might've	3.28	drop
+why'd	3.19	drop
+where'd	3.06	drop

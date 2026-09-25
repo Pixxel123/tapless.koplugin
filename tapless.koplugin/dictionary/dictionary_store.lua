@@ -7,12 +7,14 @@ local DictionaryStore = {
 DictionaryStore.__index = DictionaryStore
 
 -- The pair file's bucket for a previous word: its first two letters, or
--- a one-letter word twice ("a" is in bucket "aa").
+-- a one-letter word twice ("a" is in bucket "aa"). An apostrophe is no
+-- letter: "i'm" is in bucket "im".
 local function pairKey(word)
-    if #word == 1 then
-        return word .. word
+    local letters = word:gsub("'", "")
+    if #letters == 1 then
+        return letters .. letters
     end
-    return string.sub(word, 1, 2)
+    return string.sub(letters, 1, 2)
 end
 
 function DictionaryStore:new(plugin_dir, registry, dictionary_index, time_api)
@@ -156,28 +158,48 @@ function DictionaryStore:invalidate(dictionary)
     self.prefetch_jobs[dictionary] = nil
 end
 
-function DictionaryStore:containsWord(signature, word, dictionary)
-    if type(signature) ~= "string" or not signature:match("^[a-z]+$")
-            or type(word) ~= "string" then
+-- Whether a word of the dictionary is spelled with these letters, whatever
+-- its apostrophes, accents or capitals: "dont" has "don't".
+function DictionaryStore:hasLetters(signature, dictionary)
+    if type(signature) ~= "string" or not signature:match("^[a-z]+$") then
         return false
     end
     dictionary = dictionary or "en"
     self.word_presence_cache[dictionary] =
         self.word_presence_cache[dictionary] or {}
     local cache = self.word_presence_cache[dictionary]
-    if cache[word] ~= nil then
-        return cache[word]
+    if cache[signature] ~= nil then
+        return cache[signature]
     end
     local bucket = self:loadBucket(
         string.sub(signature, 1, 1), string.sub(signature, -1), dictionary)
+    local found = false
     for _, entry in ipairs(bucket and bucket.entries or {}) do
-        if entry.word == word then
-            cache[word] = true
-            return true
+        if entry.signature == signature then
+            found = true
+            break
         end
     end
-    cache[word] = false
-    return false
+    cache[signature] = found
+    return found
+end
+
+-- The dictionary's own spelling of word, matched without regard to case
+-- ("i'm" finds "I'm"), or nil when it is no word of the dictionary.
+-- signature is the word's letters, as the word lists are keyed.
+function DictionaryStore:findWord(signature, word, dictionary)
+    if type(signature) ~= "string" or not signature:match("^[a-z]+$")
+            or type(word) ~= "string" then
+        return
+    end
+    local bucket = self:loadBucket(string.sub(signature, 1, 1),
+        string.sub(signature, -1), dictionary or "en")
+    local lowered = word:lower()
+    for _, entry in ipairs(bucket and bucket.entries or {}) do
+        if entry.signature == signature and entry.word:lower() == lowered then
+            return entry.word
+        end
+    end
 end
 
 function DictionaryStore:discardPrefetch(controller)
@@ -356,7 +378,7 @@ function DictionaryStore:pairRow(previous_word, dictionary)
     local package = self:open(dictionary)
     local meta = package and package.pairs_index
         and type(previous_word) == "string"
-        and previous_word:match("^[a-z]+$")
+        and previous_word:match("^[a-z][a-z']*$")
         and package.pairs_index[pairKey(previous_word)]
     if meta then
         package.pairs_file:seek("set", meta.offset)

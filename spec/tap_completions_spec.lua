@@ -32,7 +32,12 @@ local function newInputBox()
 end
 
 local WORDS = { "hello", "help", "helmet", "the", "there", "their", "then",
-    "world", "would", "word", "say" }
+    "world", "would", "word", "say", "don't", "done", "I'm" }
+
+-- A word's letters, as the word lists are keyed: "don't" is "dont".
+local function signature(word)
+    return (word:lower():gsub("'", ""))
+end
 
 -- The helper's normalization, but normalizing whole words too.
 local normalization = setmetatable({
@@ -68,7 +73,7 @@ local function setup(options)
         end,
     }
     local known = {}
-    for _, word in ipairs(WORDS) do known[word] = true end
+    for _, word in ipairs(WORDS) do known[word:lower()] = word end
     local personal = {
         prepareWord = function(_, word)
             if type(word) ~= "string" or #word < 2 then return end
@@ -78,7 +83,17 @@ local function setup(options)
     }
     -- Every word list counts as loaded already.
     local store = {
-        containsWord = function(_, _, word) return known[word] == true end,
+        findWord = function(_, letters, word)
+            local spelling = known[word:lower()]
+            return spelling and signature(spelling) == letters and spelling
+                or nil
+        end,
+        hasLetters = function(_, letters)
+            for _, word in ipairs(WORDS) do
+                if signature(word) == letters then return true end
+            end
+            return false
+        end,
         isBucketLoaded = function() return true end,
         loadBucketSlice = function() return true end,
     }
@@ -112,9 +127,10 @@ local function setup(options)
                 previous_word = previous_word })
             local found = {}
             for _, word in ipairs(WORDS) do
-                if word:sub(1, #prefix) == prefix and word ~= typed:lower()
-                        and #found < 4 then
-                    found[#found + 1] = { word = word, signature = word }
+                local letters = signature(word)
+                if letters:sub(1, #prefix) == prefix
+                        and word:lower() ~= typed and #found < 4 then
+                    found[#found + 1] = { word = word, signature = letters }
                 end
             end
             return found
@@ -273,9 +289,8 @@ it("does not learn a typo or a swiped word as a tapped one", function()
     T.eq(state.uses.world, nil, "a swiped word is learned when committed")
 end)
 
-it("does not learn either part of a word joined by an apostrophe or hyphen",
-        function()
-    -- All words too, so only the joining mark stops them.
+it("learns a word with an apostrophe whole, never its parts", function()
+    -- Words too, so only the apostrophe or hyphen stops them.
     for _, word in ipairs({ "don", "re", "well", "known" }) do
         WORDS[#WORDS + 1] = word
     end
@@ -284,10 +299,19 @@ it("does not learn either part of a word joined by an apostrophe or hyphen",
     state.type("d", "o", "n", "'", "t", " ", "t", "h", "e", "y", "'", "r",
         "e", " ", "w", "e", "l", "l", "-", "k", "n", "o", "w", "n", " ")
     state.pause()
+    T.eq(state.uses["don't"], 1, "the whole word")
     T.eq(state.uses.don, nil)
     T.eq(state.uses.re, nil)
-    T.eq(state.uses.well, nil)
+    T.eq(state.uses.well, nil, "a hyphen joins two words into one")
     T.eq(state.uses.known, nil)
+end)
+
+it("learns the dictionary's spelling of a tapped word", function()
+    local _, _, state = setup()
+    state.type("i", "'", "m", " ")
+    state.pause()
+    T.eq(state.uses["I'm"], 1)
+    T.eq(state.uses["i'm"], nil)
 end)
 
 it("leaves input method layouts alone", function()
@@ -379,12 +403,27 @@ it("forgets a tapped word when the keyboard closes", function()
     T.eq(state.uses.hello, nil)
 end)
 
-it("offers no completions for letters after an apostrophe", function()
+it("completes a word with its apostrophe", function()
     local _, _, state = setup()
-    state.type("d", "o", "n", "'", "t")
+    state.type("d", "o", "n", "'")
     state.pause()
-    T.eq(state.row(), "")
-    T.eq(#state.asked, 0, "not asked for \"t\"")
+    T.eq(state.asked[1].typed, "don'")
+    T.eq(state.asked[1].prefix, "don")
+    T.eq(state.row(), "don't,done")
+    state.pick(1)
+    T.eq(state.text(), "don't")
+
+    local _, _, typed_out = setup()
+    typed_out.type("d", "o", "n", "t")
+    typed_out.pause()
+    T.eq(typed_out.row(), "don't", "offered for the letters without it")
+end)
+
+it("takes a word with an apostrophe as the previous word", function()
+    local _, _, state = setup()
+    state.type("I", "'", "m", " ", "h", "e")
+    state.pause()
+    T.eq(state.asked[#state.asked].previous_word, "i'm")
 end)
 
 it("keeps a tapped word through a backspace inside it", function()
@@ -430,6 +469,18 @@ it("completes from the most common words, best first", function()
     end
     T.eq(words(engine:completeWord{ prefix = "the", typed = "the" })
         :find("^the,") , nil, "the word as typed is left out")
+end)
+
+it("completes contractions with their apostrophes", function()
+    T.eq(engine:completeWord{ prefix = "dont", typed = "dont" }[1].word,
+        "don't")
+    local they = words(engine:completeWord{ prefix = "they", typed = "they" })
+    T.truthy(they:find("they're", 1, true), they)
+    T.truthy(not they:find("theyre", 1, true), they)
+    local store = engine.dictionary_store
+    T.truthy(store:hasLetters("dont", "en"), "\"dont\" needs no adding")
+    T.eq(store:findWord("im", "i'm", "en"), "I'm")
+    T.eq(store:findWord("dont", "dont", "en"), nil)
 end)
 
 it("ranks a word that follows the previous word higher", function()

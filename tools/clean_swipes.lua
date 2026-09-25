@@ -94,7 +94,8 @@ function CleanSwipes.words(plugin_dir, dictionary, from, count)
         .. "/words.buckets.tsv"
     local ranked, seen = {}, {}
     for line in io.lines(path) do
-        local word, _, freq = line:match("^([^\t]+)\t([^\t]+)\t(%d+)")
+        -- The word as spelled, not its letters: "don't" is no "dont".
+        local word, freq = line:match("^[^\t]+\t([^\t]+)\t(%d+)")
         if word and not seen[word] and word:match("^[a-z][a-z][a-z]+$")
                 and #word <= 10 then
             seen[word] = true

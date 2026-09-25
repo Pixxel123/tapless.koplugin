@@ -2,8 +2,9 @@
 """Build a dictionary's word-pair table from a corpus of sentences.
 
 Counts which word follows which, the way the keyboard sees text: a pair is
-two words separated only by spaces, the first all letters, the second all
-letters but for punctuation after it. Each pair of dictionary words earns
+two words separated only by spaces, the first all letters (an apostrophe
+inside, as in "don't", is part of a word), the second the same but for
+punctuation after it. Each pair of dictionary words earns
 a bonus in the ranking's frequency units (Zipf x 1000), how much likelier
 the word is after the previous word than anywhere:
 
@@ -18,7 +19,8 @@ Writes words.pairs.tsv, one line per previous word:
     previous<TAB>word:bonus word:bonus ...
 
 grouped into buckets by the previous word's first two letters (a one-letter
-word twice: "a" is in "aa"), and words.pairs.idx indexing the buckets like
+word twice: "a" is in "aa"; an apostrophe is no letter: "i'm" is in "im"),
+with each following word spelled as the dictionary spells it ("I'm"), and words.pairs.idx indexing the buckets like
 words.buckets.idx. The dictionary's manifest.tsv gets the files' names and
 checksums. --flat writes plain "previous<TAB>word<TAB>bonus" lines to
 words.pairs.flat.tsv instead, for experiments.
@@ -43,7 +45,8 @@ import os
 import re
 import sys
 
-LETTERS = re.compile(r"^[a-z]+$")
+# A word: letters, with at most one apostrophe inside ("don't").
+WORD = re.compile(r"^[a-z]+(?:'[a-z]+)?$")
 TRAILING = re.compile(r"[^\w\s]+$")
 MANIFEST_KEYS = ("pairs_data", "pairs_index", "sha256_pairs_data",
                  "sha256_pairs_index", "pairs_source")
@@ -110,8 +113,9 @@ def count(paths, exclusion):
             continue
         before = None
         for token in sentence.lower().split():
+            token = token.replace("\u2019", "'")
             word = TRAILING.sub("", token)
-            typed = word if LETTERS.match(word) else None
+            typed = word if WORD.match(word) else None
             if typed:
                 words[typed] += 1
                 if before:
@@ -119,18 +123,19 @@ def count(paths, exclusion):
                     pairs[before, typed] += 1
             # The keyboard sees a previous word only when nothing but
             # spaces follows it.
-            before = token if LETTERS.match(token) else None
+            before = token if WORD.match(token) else None
     return words, previous, pairs, left_out
 
 
 def read_dictionary(directory):
-    words = set()
+    """The dictionary's words, lowercase, each with its own spelling."""
+    words = {}
     with open(os.path.join(directory, "words.buckets.tsv"),
               encoding="utf-8") as tsv:
         for line in tsv:
             fields = line.rstrip("\n").split("\t")
             if len(fields) >= 2 and fields[1]:
-                words.add(fields[1])
+                words[fields[1].lower()] = fields[1]
     return words
 
 
@@ -144,7 +149,7 @@ def table(words, previous, pairs, dictionary, args):
         ratio = (n / previous[before]) / (words[word] / total)
         bonus = min(args.cap, round(args.scale * math.log10(ratio)))
         if bonus >= args.min_bonus:
-            rows[before].append((n, word, bonus))
+            rows[before].append((n, dictionary[word], bonus))
     kept = {}
     for before, followers in rows.items():
         followers.sort(key=lambda follower: (-follower[0], follower[1]))
@@ -154,7 +159,8 @@ def table(words, previous, pairs, dictionary, args):
 
 
 def bucket_key(word):
-    return word * 2 if len(word) == 1 else word[:2]
+    letters = word.replace("'", "")
+    return letters * 2 if len(letters) == 1 else letters[:2]
 
 
 def sha256(path):
@@ -227,7 +233,7 @@ def main():
     parser.add_argument("--cap", type=int, default=3000)
     parser.add_argument("--min-count", type=int, default=3)
     parser.add_argument("--min-bonus", type=int, default=300)
-    parser.add_argument("--per-word", type=int, default=64)
+    parser.add_argument("--per-word", type=int, default=96)
     parser.add_argument("--flat", action="store_true")
     args = parser.parse_args()
 
