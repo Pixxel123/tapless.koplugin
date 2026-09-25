@@ -72,13 +72,11 @@ upstream's time. It isn't noticeable next to the screen refresh.
 
 ```mermaid
 flowchart LR
-    A["Kindle: swipe_session.py<br/>prompts words or sentences"] --> B["Recorder patch logs<br/>every touch point,<br/>key rectangle and outcome"]
-    B --> C["sessions/*.jsonl"]
-    C --> D["replay.lua<br/>upstream code"]
-    C --> E["replay.lua<br/>fork code"]
-    D --> F["Compare swipe by swipe"]
-    E --> F
-    F --> G["First choice, in the row,<br/>mean reciprocal rank,<br/>fixed / broken, McNemar p"]
+    A["Swipe prompted words<br/>on the Kindle"] --> B["Save every touch point"]
+    B --> C["Replay the same swipes<br/>through upstream's code"]
+    B --> D["Replay the same swipes<br/>through the fork's code"]
+    C --> E["Compare,<br/>swipe by swipe"]
+    D --> E
 ```
 
 The recorder stores the raw touch events, not what the keyboard made of
@@ -171,20 +169,14 @@ word before it.
 
 #### Technical details
 
+Each step looks at fewer words, more carefully:
+
 ```mermaid
 flowchart TD
-    A["Touch points"] --> B["Letters crossed<br/>e.g. wertyuilkl"]
-    A --> C["Per letter: closeness to key centre,<br/>turn, dwell time, scribbling"]
-    B --> D["Look up word lists by<br/>first + last letter"]
-    B --> E["Also: keys next to the start<br/>and next to the end point"]
-    D --> F["Quick pass on about 800 words:<br/>letters in order, weighted skips"]
-    E --> F
-    C --> F
-    F --> G["Keep the best 40"]
-    G --> H["Full alignment,<br/>dynamic programming"]
-    H --> I["Keep the best 12"]
-    I --> J["Compare path shape with the<br/>ideal path through the key centres"]
-    J --> K["Suggestion row: 4 words"]
+    A["Swipe: the letters crossed,<br/>e.g. wertyuilkl"] --> B["About 800 words that start and end<br/>with the right letters, or a key next to them"]
+    B -->|"quick check: are the word's<br/>letters crossed in order?"| C["Best 40"]
+    C -->|"careful check: where does<br/>each letter fit best?"| D["Best 12"]
+    D -->|"does the swipe's shape match<br/>the word's shape?"| E["Suggestion row: best 4"]
 ```
 
 **Letters and how much each one counts.** As the finger moves, every new
@@ -348,26 +340,24 @@ works, just without the table.
 
 #### Technical details
 
+What a word counts for:
+
+| You... | Counts |
+|---|---|
+| swipe a word and leave it in the text | 1 |
+| pick a word from the suggestion row | 2 |
+| tap out a dictionary or personal word and end it with a space or punctuation | 1 |
+| delete a swiped word straight away, or tap out a typo | 0 |
+
+Each count is also learned after the word before it. Then:
+
 ```mermaid
-flowchart TD
-    A["Swiped word"] --> B{"What happened next?"}
-    B -->|left in the text| C["Count 1"]
-    B -->|picked from the row| D["Count 2"]
-    B -->|deleted| E["Not counted"]
-    T["Tapped word ended by<br/>space or punctuation"] --> K{"Dictionary or<br/>personal word?"}
-    K -->|yes| C
-    K -->|no| E
-    C --> U["Word counts<br/>max 2000 words"]
-    D --> U
-    C --> P["Pair counts: previous word to this word<br/>max 24 per word, 2000 words"]
-    D --> P
-    U --> R["Use bonus"]
-    P --> S["Learned pair bonus"]
-    W["Tatoeba pair table"] --> X["Table pair bonus"]
-    S --> Y["Pair bonus, capped at 3600"]
-    X --> Y
-    R --> Z["Rank"]
-    Y --> Z
+flowchart LR
+    A["How often you<br/>use the word"] --> B["Use bonus"]
+    C["How often you've typed it<br/>after the previous word"] --> D["Pair bonus<br/>(the two added,<br/>capped at 3600)"]
+    E["How often it follows the<br/>previous word in Tatoeba"] --> D
+    B --> F["Word's rank"]
+    D --> F
 ```
 
 Every bonus is in the same units as word frequency, Zipf × 1000, so 1000
@@ -412,10 +402,10 @@ file, plus an index of where each part starts.
 
 ```mermaid
 flowchart LR
-    A["Previous word: the"] --> B["Index: bucket 'th'<br/>offset and length"]
-    B --> C["Read that part of<br/>words.pairs.tsv"]
-    C --> D["Find the line<br/>the → accident:1065 air:1031 ..."]
-    D --> E["Keep the parsed line<br/>last 256 words cached"]
+    A["Previous word: the"] --> B["The index says where<br/>words starting 'th' are"]
+    B --> C["Read only that part<br/>of the file"]
+    C --> D["Take the line for 'the':<br/>accident 1065, air 1031, ..."]
+    D --> E["Remember it for next time<br/>(the last 256 words)"]
 ```
 
 Pairs are only counted across spaces, the way the keyboard sees the
@@ -502,24 +492,20 @@ or patch replaces the key handlers, like the ZenOS keyboard patch.
 ```mermaid
 sequenceDiagram
     participant You
-    participant Keyboard
-    participant Loader as Background loader
     participant Row as Suggestion row
-    You->>Keyboard: tap "t" (first letter of a word)
-    Keyboard->>Loader: start reading the t* word lists
-    Loader-->>Loader: one list every 50 ms, waits during swipes
-    You->>Keyboard: tap "h"
-    Note over Keyboard: 0.45 s with no key
-    Keyboard->>Keyboard: word at cursor "th", word before it
-    Keyboard->>Row: the, that, this, they
-    You->>Keyboard: tap "e", "i"
-    Note over Row: not redrawn per letter
-    Note over Keyboard: 0.45 s with no key
-    Keyboard->>Row: their, theirs, ...
+    You->>You: tap "t", "h"
+    Note over You,Row: half a second with no key
+    Row->>You: the, that, this, they
+    You->>You: tap "e", "i"
+    Note over Row: stays as it was: no redraw per letter
+    Note over You,Row: half a second with no key
+    Row->>You: their, theirs, ...
     You->>Row: tap "their"
-    Row->>Keyboard: check the word at the cursor still starts with "thei"
-    Keyboard->>Keyboard: replace "thei" with "their", space pending
+    Row->>You: "thei" becomes "their"
 ```
+
+Meanwhile, from the first letter, the word lists for words starting with
+"t" are read in the background, a few milliseconds at a time.
 
 Candidates come from the 256 most common words for the first letter,
 your personal words, and, from three letters if those leave the row short,
@@ -549,15 +535,15 @@ parks it in a state that ignores its events until it lifts.
 
 **Spaces.**
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
-    Idle --> Pending: swipe or pick types a word
-    Pending --> Idle: letter or swipe, space goes in first
-    Pending --> Pending: punctuation, no space before it
-    Pending --> Idle: space typed, used as the pending space
-    Pending --> Idle: cursor moved or backspace, nothing added
-```
+After a swiped or picked word, a space is waiting. What you do next
+decides what happens to it:
+
+| Next you... | The waiting space |
+|---|---|
+| swipe or type another word | goes in before it: "hello world" |
+| type punctuation | isn't added, and keeps waiting: "hello, world" |
+| type a space | is that space, so you don't get two |
+| move the cursor or press backspace | is dropped |
 
 A pending space remembers the text box and the cursor position. It's only
 used if both are unchanged when the next word starts.
@@ -702,12 +688,10 @@ typed text.
 
 ```mermaid
 flowchart LR
-    A["Change the code"] --> B["replay.lua --compare old/<br/>recorded sessions"]
-    A --> C["replay.lua --compare old/<br/>clean common, mid, rare"]
-    B --> D{"More fixed than broken,<br/>p below 0.05?"}
-    C --> E{"Clean sets<br/>not worse?"}
-    D --> F["Keep"]
-    E --> F
+    A["Change the code"] --> B["Replay the recorded<br/>and clean swipes<br/>through old and new"]
+    B --> C{"More fixed than broken,<br/>and clean swipes<br/>no worse?"}
+    C -->|yes| D["Keep it"]
+    C -->|no| E["Rework or drop it"]
 ```
 
 `fit_weights.lua` treats each recorded swipe as a choice between the
