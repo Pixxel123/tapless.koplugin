@@ -285,7 +285,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
             handle.popup = adapter.virtual_key_popup:new{
                 parent_key = handle,
             }
-            keyboard:_swypeOutlinePopup(handle.popup)
+            keyboard:_swypePlainPopup(handle.popup)
             handle.callback = tap
         end
         tap = function()
@@ -309,24 +309,14 @@ function KoreaderAdapter:install(VirtualKeyboard)
         return handle
     end
 
-    -- Thickens and rounds each popup key's frame, shrinking its content
-    -- by the same amount so the key's own size does not change. A swipe
-    -- on one of them must not fall back to typing its (possibly blank)
-    -- key either.
-    function VirtualKeyboard:_swypeOutlinePopup(popup)
-        local white = adapter.blitbuffer.COLOR_WHITE
-        -- White behind the keys too, and under the finger.
-        popup[1][1].background = white
+    -- Draws the popup's keys like the keyboard's: all white, the centre
+    -- one included, which KOReader shades grey. A swipe on one of them
+    -- must not fall back to typing its key either.
+    function VirtualKeyboard:_swypePlainPopup(popup)
         for _, row in ipairs(popup.layout) do
             for _, key in ipairs(row) do
                 local frame = key[1]
-                frame.background = white
-                local old_border = frame.bordersize
-                frame.bordersize = adapter.size.border.thick
-                frame.radius = adapter.size.radius.default
-                local shrink = 2 * (frame.bordersize - old_border)
-                frame[1].dimen.w = frame[1].dimen.w - shrink
-                frame[1].dimen.h = frame[1].dimen.h - shrink
+                frame.background = adapter.blitbuffer.COLOR_WHITE
                 -- KOReader builds icon keys without alpha, which paints
                 -- our transparent SVGs as black squares.
                 if key.icon and frame[1][1] then
