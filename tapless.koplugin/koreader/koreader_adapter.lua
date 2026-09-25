@@ -284,6 +284,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
             -- read while the popup is built: there it closes the popup.
             key.callback = close_popup
             open_menu()
+            -- KOReader sets this when the popup is clamped at the screen
+            -- edge, to swallow the hold-release under a finger still down
+            -- from opening it. No finger is down after a tap.
+            key.ignore_key_release = nil
             key.callback = tap
         end
         key.callback = tap
