@@ -285,14 +285,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
             handle.popup = adapter.virtual_key_popup:new{
                 parent_key = handle,
             }
-            keyboard:_swypePlainPopup(handle.popup)
+            keyboard:_swypePlainPopup(handle.popup, handle)
             handle.callback = tap
-        end
-        tap = function()
-            open()
-            -- No finger is down after a tap; see _swypeWireGlobeKey.
+            -- KOReader sets this when it nudges the popup off an edge, to
+            -- skip the first lift; ours never opens under the finger.
             handle.ignore_key_release = nil
         end
+        tap = open
         handle.callback = tap
         handle.hold_callback = open
         handle.hold_cb_is_popup = true
@@ -309,22 +308,63 @@ function KoreaderAdapter:install(VirtualKeyboard)
         return handle
     end
 
-    -- Draws the popup's keys like the keyboard's: all white, the centre
-    -- one included, which KOReader shades grey. A swipe on one of them
-    -- must not fall back to typing its key either.
-    function VirtualKeyboard:_swypePlainPopup(popup)
-        for _, row in ipairs(popup.layout) do
-            for _, key in ipairs(row) do
-                local frame = key[1]
-                frame.background = adapter.blitbuffer.COLOR_WHITE
-                -- KOReader builds icon keys without alpha, which paints
-                -- our transparent SVGs as black squares.
-                if key.icon and frame[1][1] then
-                    frame[1][1].alpha = true
-                end
-                key.swipe_callback = nil
+    -- Redraws KOReader's popup like the suggestion row: one white row
+    -- with thin grey lines between the keys, just above the keyboard and
+    -- lined up with the handle's end of it. A swipe on one of its keys
+    -- must not fall back to typing the key either.
+    function VirtualKeyboard:_swypePlainPopup(popup, handle)
+        local white = adapter.blitbuffer.COLOR_WHITE
+        local position = popup[1]
+        local frame = position[1]
+        local centre = frame[1]
+        local rows = centre[1]
+        local row = rows[1]
+        local keys = popup.layout[1]
+        local line_w = adapter.size.line.medium
+        for index = #row, 1, -1 do
+            row[index] = nil
+        end
+        for index, key in ipairs(keys) do
+            if index > 1 then
+                table.insert(row, adapter.keyboard_ui:line(line_w,
+                    key.height))
+            end
+            table.insert(row, key)
+            key[1].background = white
+            -- KOReader builds icon keys without alpha, which paints our
+            -- transparent SVGs as black squares.
+            if key.icon and key[1][1][1] then
+                key[1][1][1].alpha = true
+            end
+            key.swipe_callback = nil
+            -- KOReader skips the first lift on the centre key, which it
+            -- expects under the finger; ours is not.
+            if key._onHoldReleaseKey then
+                key.onHoldReleaseKey = key._onHoldReleaseKey
+                key.onPanReleaseKey = key._onPanReleaseKey
             end
         end
+        row:resetLayout()
+        rows:resetLayout()
+
+        frame.background = white
+        frame.padding = 0
+        centre.dimen.w = #keys * handle.width + (#keys - 1) * line_w
+        centre.dimen.h = handle.height
+        local border = frame.bordersize
+        local w = centre.dimen.w + 2 * border
+        local h = centre.dimen.h + 2 * border
+        -- popup.dimen is this same table, which its refreshes use.
+        frame.dimen.w, frame.dimen.h = w, h
+
+        -- self.dimen is the keys frame, placed when it was painted.
+        local board, key_box = self.dimen, handle[1].dimen
+        local x = key_box.x
+        if key_box.x + key_box.w / 2 > board.x + board.w / 2 then
+            x = key_box.x + key_box.w - w
+        end
+        position.dimen.x = math.max(0, math.min(x, position.dimen.w - w))
+        position.dimen.y = math.max(0, board.y - h)
     end
 
     -- Tap 🌐 for KOReader's layout menu, which KOReader opens on hold;
