@@ -632,13 +632,14 @@ These are off by default:
 - **Double space types a period**: a second space right after a word, or a
   space right after a swiped word, becomes ". ". Not used on input method
   layouts (Chinese, Japanese, Korean, Vietnamese).
-- **One-handed keyboard**: narrows the keys to one side of the screen.
-  Beside them are three buttons: four outward arrows leave the mode, an
-  arrow moves the keys to the edge it points at, and a dotted square opens
-  a resize frame. In the frame the keys fade; drag a top corner to change
-  width and height, a bottom corner to change width, or inside to move
-  them, then tap Done. Portrait and landscape remember their own place and
-  size.
+- **One-handed keyboard**: narrows the keys to one side of the screen,
+  with the page visible beside them. At the end of the suggestion row is
+  ◨. Tap or hold it to open a menu of leave, move and resize, or swipe
+  towards an option to run it. In resize mode the keys fade; drag a top
+  corner to change width and height, a bottom corner to change width, or
+  inside to move them, then tap Done. Portrait and landscape remember
+  their own place and size. The suggestion row, here and at full width,
+  is plain, with the top word in bold.
 
 Tap the globe key (🌐) for the keyboard layout menu. Hold it and lift to
 switch one-handed mode on or off.

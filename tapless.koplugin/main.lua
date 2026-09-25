@@ -233,10 +233,12 @@ function Tapless:addToMainMenu(menu_items)
             {
                 text = "One-handed keyboard",
                 help_text = "Narrows the keys to one side of the screen, "
-                    .. "with buttons beside them to leave, move the keys "
-                    .. "to the other side, or resize them. Hold the globe "
-                    .. "key and lift to switch it on or off while typing. "
-                    .. "Portrait and landscape are remembered separately.",
+                    .. "with the page beside them. A ◨ handle at the "
+                    .. "end of the suggestion row opens a menu of leave, "
+                    .. "move and resize. Tap it, hold it, or swipe "
+                    .. "towards an option. Hold the globe key and lift to "
+                    .. "switch it on or off while typing. Portrait and "
+                    .. "landscape are remembered separately.",
                 checked_func = function()
                     return OneHanded:new(G_reader_settings)
                         :state(screenInfo()).enabled
