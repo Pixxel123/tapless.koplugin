@@ -36,6 +36,7 @@ it("builds a white icon button of the given size", function()
     T.eq(image.file, "/icons/leave.svg", "file")
     T.eq(image.width, 100, "icon width")
     T.eq(image.alpha, true, "alpha")
+    T.eq(image.is_icon, true, "icon")
 end)
 
 it("builds a bordered word button", function()

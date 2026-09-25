@@ -31,6 +31,7 @@ function PanelButton:create(options)
             width = options.icon_size,
             height = options.icon_size,
             alpha = true,
+            is_icon = true,
         }
     else
         content = self.text_widget:new{
