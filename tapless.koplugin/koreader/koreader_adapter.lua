@@ -359,9 +359,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
 
         -- self.dimen is the keys frame, placed when it was painted.
         local board, key_box = self.dimen, handle[1].dimen
-        local x = key_box.x
+        -- Flush with the keyboard's edge at the handle's end.
+        local x = board.x
         if key_box.x + key_box.w / 2 > board.x + board.w / 2 then
-            x = key_box.x + key_box.w - w
+            x = board.x + board.w - w
         end
         position.dimen.x = math.max(0, math.min(x, position.dimen.w - w))
         -- Its bottom border lies on the keyboard's top one, not above it.
