@@ -28,6 +28,7 @@ local specs = {
     "word_pairs_spec",
     "tap_completions_spec",
     "one_handed_spec",
+    "icons_spec",
 }
 
 for _, name in ipairs(specs) do
