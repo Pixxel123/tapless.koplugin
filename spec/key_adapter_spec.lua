@@ -33,6 +33,10 @@ local function newVirtualKeyClass(calls)
         calls.stock_pan_release = (calls.stock_pan_release or 0) + 1
         return true
     end
+    function VirtualKey:onHoldReleaseKey()
+        calls.stock_hold_release = (calls.stock_hold_release or 0) + 1
+        return true
+    end
     return VirtualKey
 end
 
@@ -412,4 +416,47 @@ it("ignores empty suggestion slots that look like a space", function()
     local slot = spaceKey(VirtualKey, newKeyboard(calls))
     slot.is_swype_candidate = true
     T.eq(slot:onSpaceCursorPan(nil, pan(100, 160)), false)
+end)
+
+-- A keyboard with a one-handed switch waiting for the lift.
+local function withPendingSwitch(keyboard, calls)
+    local pending = true
+    keyboard._swypeTakeLift = function()
+        if not pending then
+            return false
+        end
+        pending = false
+        calls.switched = (calls.switched or 0) + 1
+        return true
+    end
+    return keyboard
+end
+
+it("switches one-handed mode on the lift after holding the globe key",
+        function()
+    local calls, VirtualKey = setup()
+    local keyboard = withPendingSwitch(newKeyboard(calls), calls)
+    local key = VirtualKey:new{ key = "a", keyboard = keyboard }
+    T.eq(key:onHoldReleaseKey(), true, "taken")
+    T.eq(calls.switched, 1, "switched")
+    T.eq(calls.stock_hold_release, nil, "no stock release")
+    key:onHoldReleaseKey()
+    T.eq(calls.stock_hold_release, 1, "next release is ordinary")
+end)
+
+it("switches on a lift that ends a slide after the hold", function()
+    local calls, VirtualKey = setup()
+    local keyboard = withPendingSwitch(newKeyboard(calls), calls)
+    local key = VirtualKey:new{ key = "a", keyboard = keyboard }
+    T.eq(key:onPanReleaseKey({}, { ges = "pan_release" }), true, "taken")
+    T.eq(calls.switched, 1, "switched")
+    T.eq(calls.tapless_pan_release, nil, "no word release")
+    T.eq(calls.stock_pan_release, nil, "no stock release")
+end)
+
+it("leaves hold releases alone with no switch waiting", function()
+    local calls, VirtualKey = setup()
+    local key = VirtualKey:new{ key = "a", keyboard = newKeyboard(calls) }
+    T.eq(key:onHoldReleaseKey(), true)
+    T.eq(calls.stock_hold_release, 1)
 end)

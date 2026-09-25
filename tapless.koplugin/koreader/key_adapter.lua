@@ -7,6 +7,7 @@ KeyAdapter.SPACE_CURSOR_SETTING = "tapless_space_cursor"
 local OPTIONAL_METHODS = {
     onMultiswipeKey = true,
     onSpaceCursorPan = true,
+    onHoldReleaseKey = true,
 }
 
 function KeyAdapter:new(normalization, gesture_range, settings)
@@ -188,6 +189,13 @@ function KeyAdapter:initWithKeyFontSize(original_init, key, ...)
     end
 end
 
+-- After a hold on the globe key, one-handed mode switches when the finger
+-- lifts, wherever it lifts; that lift is not also a key press.
+local function takeLift(keyboard)
+    return keyboard ~= nil and keyboard._swypeTakeLift ~= nil
+        and keyboard:_swypeTakeLift() == true
+end
+
 -- Each wrapper receives the method it replaces. Tapless logic runs only in
 -- the outermost copy: if another patch later wraps a Tapless wrapper and
 -- ensureInstalled() wraps again, the inner copy passes straight through.
@@ -282,7 +290,8 @@ function KeyAdapter:wrappers()
         onPanReleaseKey = function(original)
             return function(key, arg, ges)
                 local keyboard = key.keyboard
-                if adapter:finishSpaceCursor(keyboard, ges) then
+                if adapter:finishSpaceCursor(keyboard, ges)
+                        or takeLift(keyboard) then
                     return true
                 end
                 if keyboard and keyboard:isSwypeMvpEnabled()
@@ -290,6 +299,15 @@ function KeyAdapter:wrappers()
                     return true
                 end
                 return original(key, arg, ges)
+            end
+        end,
+
+        onHoldReleaseKey = function(original)
+            return function(key, ...)
+                if takeLift(key.keyboard) then
+                    return true
+                end
+                return original(key, ...)
             end
         end,
     }
