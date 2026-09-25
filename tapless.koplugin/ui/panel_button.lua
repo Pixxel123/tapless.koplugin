@@ -1,7 +1,8 @@
 -- A plain tap target for the one-handed side panel and resize frame: a
--- white box holding an icon or a word. Unlike a VirtualKey it has no hold,
--- swipe or release handling, so a lift that ends over it does nothing,
--- and its icon can be any size.
+-- white box holding an icon or a word, with filled (black background,
+-- white text) and bare (no frame) styles. Unlike a VirtualKey it has no
+-- hold, swipe or release handling, so a lift that ends over it does
+-- nothing, and its icon can be any size.
 local PanelButton = {}
 PanelButton.__index = PanelButton
 
@@ -24,7 +25,7 @@ end
 -- filled (black background and white text), bare (no frame), and
 -- callback (without one, taps are still taken but do nothing).
 function PanelButton:create(options)
-    local border = options.bare and 0 or (options.bordersize or 0)
+    local border, radius = options.bordersize or 0, options.radius
     local content
     if options.icon then
         content = self.image_widget:new{
@@ -49,6 +50,7 @@ function PanelButton:create(options)
     local background
     if options.bare then
         background = nil
+        border, radius = 0, nil
     elseif options.filled then
         background = self.blitbuffer.COLOR_BLACK
     else
@@ -56,7 +58,7 @@ function PanelButton:create(options)
     end
     local frame = self.frame_container:new{
         bordersize = border,
-        radius = options.bare and nil or options.radius,
+        radius = radius,
         padding = 0,
         margin = 0,
         background = background,

@@ -99,7 +99,8 @@ end)
 it("builds a bare icon button with no frame", function()
     local button = newButtons():create{
         name = "move", icon = "/icons/move.svg", icon_size = 5,
-        bare = true, width = 10, height = 10,
+        bare = true, bordersize = 4, radius = 21,
+        width = 10, height = 10,
     }
     local frame = button[1]
     T.eq(frame.background, nil, "background")
