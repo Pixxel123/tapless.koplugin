@@ -160,3 +160,63 @@ it("listens for drags over the whole screen and sends them on", function()
     T.eq(sent.release, "r", "release sent")
     T.eq(resize.grip, 71, "grip in px")
 end)
+
+it("fades the keyboard, outlines the keys and records where it drew",
+        function()
+    -- A container that records its own paint, and buttons with dimens.
+    local painted = {}
+    local frame = ResizeFrame:new{
+        ui_manager = { scheduleIn = function() end },
+        input_container = { new = Plain.new,
+            paintTo = function(widget, bb, x, y)
+                painted.container = { widget = widget, x = x, y = y }
+            end },
+        overlap_group = Plain,
+        vertical_group = Plain,
+        vertical_span = Plain,
+        horizontal_span = Plain,
+        gesture_range = T.gesture_range,
+        blitbuffer = { COLOR_BLACK = "black" },
+        panel_button = { create = function(_, options)
+            options.dimen = { name = options.name }
+            return options
+        end },
+        screen = { getDPI = function() return 300 end,
+            getSize = function() return "screen" end },
+        icon_dir = "/icons",
+    }
+    local resize = newResize()
+    local keyboard = {
+        swype_mvp_resize = resize,
+        _swypeResizePan = function() end,
+        _swypeResizeRelease = function() end,
+    }
+    local widget = frame:create(keyboard, {
+        width = 1264, height = 700,
+        keys = { x = 461, y = 4, w = 803, h = 692 },
+        fade = { x = 4, y = 4, w = 1256, h = 692 },
+        on_reset = function() end, on_done = function() end,
+    })
+    local lightened, rects = nil, 0
+    local bb = {
+        lightenRect = function(_, x, y, w, h, by)
+            lightened = { x = x, y = y, w = w, h = h, by = by }
+        end,
+        paintRect = function() rects = rects + 1 end,
+    }
+    widget:paintTo(bb, 0, 976)
+    T.eq(lightened.x, 4, "fade x")
+    T.eq(lightened.y, 980, "fade y")
+    T.eq(lightened.w, 1256, "fade w")
+    T.eq(lightened.h, 692, "fade h")
+    T.eq(lightened.by, 0.6, "fade amount")
+    T.eq(resize.rect.x, 461, "rect x")
+    T.eq(resize.rect.y, 980, "rect y")
+    T.eq(resize.rect.w, 803, "rect w")
+    T.eq(resize.rect.h, 692, "rect h")
+    T.truthy(rects > 8, "outline painted")
+    T.eq(painted.container.widget, widget, "container widget")
+    T.eq(painted.container.y, 976, "container y")
+    T.eq(resize.buttons.reset.name, "reset", "reset dimen")
+    T.eq(resize.buttons.done.name, "done", "done dimen")
+end)
