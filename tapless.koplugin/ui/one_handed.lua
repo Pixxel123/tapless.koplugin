@@ -7,14 +7,15 @@ local OneHanded = {
     MIN_WIDTH = 64,
     MAX_WIDTH = 92,
     DEFAULT_WIDTH = 68,
-    -- Always left beside the keys, so a panel button fits.
+    -- Always left beside the keys, so some of the page shows.
     PANEL_ROOM = 12,
     MIN_HEIGHT = 45,
     MAX_HEIGHT = 75,
     -- Of the screen height, so a dialog keeps room above in landscape.
     MAX_HEIGHT_SHARE = 0.55,
     SNAP = 3,
-    -- Shown in the corner of the globe key, whose hold switches the mode.
+    -- The handle's label, and the corner hint on the globe key, whose
+    -- hold switches the mode.
     HINT = "◨",
 }
 OneHanded.__index = OneHanded

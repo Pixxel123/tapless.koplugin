@@ -224,8 +224,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     end
 
     -- The ◨ handle at the end of the suggestion row: tap or hold opens
-    -- KOReader's own key popup, with leave, move and resize on its top
-    -- row and a plain centre key that closes it again.
+    -- KOReader's own key popup as one row of leave, move and resize.
     function VirtualKeyboard:_swypeHandle(width, height, block, screen)
         local keyboard = self
         local icon_dir = adapter.icon_dir
@@ -279,11 +278,24 @@ function KoreaderAdapter:install(VirtualKeyboard)
         -- moves the keys; afterwards it is tap again.
         local tap
         local function open()
+            -- Without KOReader's popup class, only the swipes work.
+            if not adapter.virtual_key_popup then
+                return
+            end
             handle.callback = move
-            handle.popup = adapter.virtual_key_popup:new{
+            local popup = adapter.virtual_key_popup:new{
                 parent_key = handle,
             }
-            keyboard:_swypePlainPopup(handle.popup, handle)
+            handle.popup = popup
+            -- A tap outside or Back closes it too; forget it either way.
+            local closed = popup.onCloseWidget
+            popup.onCloseWidget = function(widget)
+                if handle.popup == widget then
+                    handle.popup = nil
+                end
+                return closed(widget)
+            end
+            keyboard:_swypePlainPopup(popup, handle)
             handle.callback = tap
             -- KOReader sets this when it nudges the popup off an edge, to
             -- skip the first lift; ours never opens under the finger.

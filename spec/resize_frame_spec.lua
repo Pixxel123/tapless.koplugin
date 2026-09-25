@@ -192,7 +192,7 @@ it("creates Reset with a thin rounded border and Done filled and bold",
     frame:create(keyboard, {
         width = 1264, height = 700,
         keys = { x = 461, y = 4, w = 803, h = 692 },
-        fade = { x = 4, y = 4, w = 1256, h = 692 },
+        fade = { x = 461, y = 4, w = 803, h = 692 },
         on_reset = function() end, on_done = function() end,
     })
     T.eq(recorded.reset.bordersize, 4, "reset border")

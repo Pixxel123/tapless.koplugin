@@ -1,6 +1,6 @@
--- A plain tap target for the one-handed side panel and resize frame: a
--- white box holding an icon or a word, with filled (black background,
--- white text) and bare (no frame) styles. Unlike a VirtualKey it has no
+-- A plain tap target for the one-handed resize frame: a white box
+-- holding an icon or a word, with filled (black background, white
+-- text) and bare (no frame) styles. Unlike a VirtualKey it has no
 -- hold, swipe or release handling, so a lift that ends over it does
 -- nothing, and its icon can be any size.
 local PanelButton = {}

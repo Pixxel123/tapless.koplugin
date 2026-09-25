@@ -657,8 +657,8 @@ name through it.
 | `recognition/` | Finding the words a swipe or tapped letters could be |
 | `learning/` | The words and word pairs you keep |
 | `dictionary/` | Reading, installing and managing word lists |
-| `ui/` | Drawing the suggestion row, the swipe trail and the one-handed keyboard's panel and resize frame |
-| `icons/` | The one-handed panel's icons |
+| `ui/` | Drawing the suggestion row, the swipe trail and the one-handed keyboard's handle menu and resize frame |
+| `icons/` | The icons in the one-handed handle menu and resize frame |
 | `dictionaries/` | The word lists and word-pair tables themselves |
 
 ## Testing tools
