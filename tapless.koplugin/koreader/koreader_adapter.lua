@@ -262,17 +262,15 @@ function KoreaderAdapter:install(VirtualKeyboard)
             -- Every entry keeps a plain string key: VirtualKeyPopup's
             -- "key = v.key or v" falls back to the whole table otherwise,
             -- which addChar cannot take a swipe fallback string from.
+            -- One row: leave, move under the finger, resize.
             key_chars = {
-                [1] = { key = "close", label = adapter.one_handed.HINT },
-                northwest = { key = "leave",
-                    icon = icon_dir .. "/leave.svg" },
-                northwest_func = leave,
-                north = { key = "move",
+                [1] = { key = "move",
                     icon = icon_dir .. "/" .. target .. ".svg" },
-                north_func = move,
-                northeast = { key = "resize",
+                west = { key = "leave", icon = icon_dir .. "/leave.svg" },
+                west_func = leave,
+                east = { key = "resize",
                     icon = icon_dir .. "/resize.svg" },
-                northeast_func = resize,
+                east_func = resize,
             },
             keyboard = keyboard,
             width = width,
@@ -280,10 +278,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
         }
         -- The callback swap from _swypeWireGlobeKey: while the popup is
         -- built, the centre key reads handle.callback as its own, so it
-        -- closes the popup; afterwards it is tap again.
+        -- moves the keys; afterwards it is tap again.
         local tap
         local function open()
-            handle.callback = closePopup
+            handle.callback = move
             handle.popup = adapter.virtual_key_popup:new{
                 parent_key = handle,
             }
@@ -298,10 +296,12 @@ function KoreaderAdapter:install(VirtualKeyboard)
         handle.callback = tap
         handle.hold_callback = open
         handle.hold_cb_is_popup = true
-        -- Only northwest/north/northeast do anything; an undirected swipe
-        -- must not fall back to typing the handle's own key.
+        -- A swipe towards an option runs it; any other direction must not
+        -- fall back to typing the handle's own key.
+        local swipes = { west = leave, northwest = leave, north = move,
+            east = resize, northeast = resize }
         handle.swipe_callback = function(ges)
-            local key_function = handle.key_chars[ges.direction .. "_func"]
+            local key_function = swipes[ges.direction]
             if key_function then
                 key_function()
             end
@@ -314,9 +314,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
     -- on one of them must not fall back to typing its (possibly blank)
     -- key either.
     function VirtualKeyboard:_swypeOutlinePopup(popup)
+        local white = adapter.blitbuffer.COLOR_WHITE
+        -- White behind the keys too, and under the finger.
+        popup[1][1].background = white
         for _, row in ipairs(popup.layout) do
             for _, key in ipairs(row) do
                 local frame = key[1]
+                frame.background = white
                 local old_border = frame.bordersize
                 frame.bordersize = adapter.size.border.thick
                 frame.radius = adapter.size.radius.default
