@@ -329,8 +329,8 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self:_refresh(true, self.height ~= old_height)
     end
 
-    -- Resize mode starts from the saved block at its actual height; Task 8
-    -- draws the frame over it.
+    -- Resize mode starts from the saved block at its actual height, which
+    -- may be nil for the normal height; the frame draws over it.
     function VirtualKeyboard:_swypeStartResize()
         local screen = self:_swypeScreen()
         local state = adapter.one_handed:state(screen)
@@ -338,8 +338,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
             draft = {
                 left = state.left,
                 width = state.width,
-                height = state.height or adapter.one_handed.toMM(
-                    self:_swypeNormalHeight(), screen),
+                height = state.height,
             },
             start_height = self.height,
         }
@@ -380,9 +379,13 @@ function KoreaderAdapter:install(VirtualKeyboard)
     function VirtualKeyboard:_swypeResizeDrag()
         local screen = self:_swypeScreen()
         local one_handed = adapter.one_handed
+        -- Only a top-corner drag from a nil (normal) height needs this, to
+        -- have a number to drag from.
+        local normal_height = one_handed.toMM(
+            self:_swypeNormalHeight(), screen)
         return function(start, grip, dx, dy)
             return one_handed.drag(start, grip, one_handed.toMM(dx, screen),
-                one_handed.toMM(dy, screen), screen)
+                one_handed.toMM(dy, screen), screen, normal_height)
         end
     end
 
@@ -448,8 +451,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
         end
         adapter.resize_frame:cancelRedraw(resize)
         local screen = self:_swypeScreen()
-        resize.draft = adapter.one_handed.reset(resize.draft, screen,
-            adapter.one_handed.toMM(self:_swypeNormalHeight(), screen))
+        resize.draft = adapter.one_handed.reset(resize.draft, screen)
         self:_swypeRedrawResize()
     end
 
@@ -470,7 +472,8 @@ function KoreaderAdapter:install(VirtualKeyboard)
             state.width = draft.width
             -- Left at the normal height, the keys follow Tapless's
             -- Keyboard size setting.
-            state.height = math.abs(draft.height - normal) >= 0.5
+            state.height = draft.height
+                and math.abs(draft.height - normal) >= 0.5
                 and draft.height or nil
         end)
         -- Only the keys were redrawn while resizing: measure any height

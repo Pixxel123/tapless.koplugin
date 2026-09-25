@@ -179,8 +179,10 @@ end
 -- The draft after dragging grip dx, dy millimetres from start. Top corners
 -- set width and height, bottom corners the width only, keeping the
 -- opposite edges where they are; "move" slides the keys along the bottom.
--- start.height must be set.
-function OneHanded.drag(start, grip, dx, dy, screen)
+-- A nil start.height means the normal height and passes through unchanged,
+-- except a top corner, which needs a number to drag from and so starts it
+-- from normal_height instead.
+function OneHanded.drag(start, grip, dx, dy, screen, normal_height)
     local limits = OneHanded.limits(screen)
     local block = {
         left = start.left,
@@ -200,21 +202,20 @@ function OneHanded.drag(start, grip, dx, dy, screen)
                 math.min(limits.max_w, limits.screen_w - start.left))
         end
         if grip == "tl" or grip == "tr" then
-            block.height = clamp(start.height - dy, limits.min_h,
-                limits.max_h)
+            block.height = clamp((start.height or normal_height) - dy,
+                limits.min_h, limits.max_h)
         end
     end
     return OneHanded.snap(block, screen)
 end
 
--- Back to the default width and the normal height, against whichever edge
--- the keys are nearer.
-function OneHanded.reset(block, screen, normal_height)
+-- Back to the default width and the normal (nil) height, against whichever
+-- edge the keys are nearer.
+function OneHanded.reset(block, screen)
     local nearer = OneHanded.target(block, screen) == "left"
         and "right" or "left"
     local fresh = OneHanded.fit({
         width = OneHanded.DEFAULT_WIDTH,
-        height = normal_height,
     }, screen)
     return OneHanded.toEdge(fresh, screen, nearer)
 end

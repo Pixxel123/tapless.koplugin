@@ -131,15 +131,33 @@ it("keeps a narrowed block at least 64 mm wide", function()
     near(block.left, SCREEN_MM - 64, "left")
 end)
 
-it("resets to 68 mm at normal height on the nearer edge", function()
+it("resets to 68 mm wide with a nil height on the nearer edge", function()
     local from_left = OneHanded.reset(
-        { left = 5, width = 80, height = 50 }, PORTRAIT, 60)
+        { left = 5, width = 80, height = 50 }, PORTRAIT)
     T.eq(from_left.left, 0, "left edge")
     T.eq(from_left.width, 68, "width")
-    T.eq(from_left.height, 60, "height")
+    T.eq(from_left.height, nil, "height")
     local from_right = OneHanded.reset(
-        { left = 30, width = 70, height = 50 }, PORTRAIT, 60)
+        { left = 30, width = 70, height = 50 }, PORTRAIT)
     near(from_right.left, SCREEN_MM - 68, "right edge")
+end)
+
+it("keeps a nil height across a move", function()
+    local start = { left = 20, width = 68, height = nil }
+    local block = OneHanded.drag(start, "move", 10, 5, PORTRAIT, 42.8)
+    T.eq(block.height, nil, "height")
+end)
+
+it("keeps a nil height across a bottom-corner drag", function()
+    local start = { left = 20, width = 68, height = nil }
+    local block = OneHanded.drag(start, "br", 10, -5, PORTRAIT, 42.8)
+    T.eq(block.height, nil, "height")
+end)
+
+it("makes a height from normal_height on a top-corner drag", function()
+    local start = { left = 20, width = 68, height = nil }
+    local block = OneHanded.drag(start, "tl", 0, -5, PORTRAIT, 42.8)
+    near(block.height, 47.8, "height")
 end)
 
 it("points the arrow at the far edge", function()
