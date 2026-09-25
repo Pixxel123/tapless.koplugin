@@ -147,6 +147,14 @@ it("snaps a left corner to the left edge without moving the right",
     near(block.width, 86, "right stays")
 end)
 
+it("keeps the right edge put when a left snap's width needs capping",
+        function()
+    local start = { left = 5, width = 89, height = 60 }
+    local block = OneHanded.drag(start, "tl", -3, 0, PORTRAIT)
+    T.eq(block.width, 92, "width capped")
+    near(block.left + block.width, 94, "right stays, left does not reach 0")
+end)
+
 it("resets to 68 mm wide with a nil height on the nearer edge", function()
     local from_left = OneHanded.reset(
         { left = 5, width = 80, height = 50 }, PORTRAIT)

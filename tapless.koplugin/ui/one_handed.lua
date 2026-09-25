@@ -181,9 +181,11 @@ function OneHanded.snap(block, screen, grip)
     end
     if grip == "tl" or grip == "bl" then
         if fitted.left < OneHanded.SNAP then
+            -- The right edge is the fixed one here, so it must stay put
+            -- even where capping the width keeps the left edge off 0.
             local right = fitted.left + fitted.width
-            fitted.left = 0
             fitted.width = clamp(right, limits.min_w, limits.max_w)
+            fitted.left = right - fitted.width
         end
         return fitted
     end
