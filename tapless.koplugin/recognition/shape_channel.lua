@@ -54,6 +54,19 @@ function ShapeChannel:_lettersNear(point, key_centers)
     return letters
 end
 
+-- The trimmed swipe's first and last touch points. PathShape.resample
+-- keeps a path's own endpoints exactly, and path_shape:swipe trims to
+-- the first and last letters the trace crossed, so these are where the
+-- swipe's first and last letters were, not wherever the raw trace ends:
+-- overshoot past the keyboard or a settle before lift is not part of
+-- the word, so it must not move the bucket lookup.
+local function swipeEnds(swipe)
+    local samples = swipe.samples
+    local last = #samples
+    return { x = samples[1], y = samples[2] },
+        { x = samples[last - 1], y = samples[last] }
+end
+
 -- Inserts item into found, kept sorted by rank and at most limit long.
 local function keep(found, item, limit)
     local position = #found + 1
@@ -112,8 +125,9 @@ function ShapeChannel:candidates(options)
         keep(found, { entry = entry, shape = shape,
             rank = self.SHAPE_WEIGHT * shape - (entry.freq or 0) }, self.KEEP)
     end
-    local lasts = self:_lettersNear(points[#points], key_centers)
-    for _, first in ipairs(self:_lettersNear(points[1], key_centers)) do
+    local first_point, last_point = swipeEnds(swipe)
+    local lasts = self:_lettersNear(last_point, key_centers)
+    for _, first in ipairs(self:_lettersNear(first_point, key_centers)) do
         for _, last in ipairs(lasts) do
             if self.personal_dictionary then
                 local bucket = self.personal_dictionary:getBucket(first, last,

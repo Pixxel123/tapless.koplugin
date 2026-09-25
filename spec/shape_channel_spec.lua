@@ -44,6 +44,15 @@ local function position(list, word)
     end
 end
 
+-- The trimmed swipe's first and last touch points, as ShapeChannel itself
+-- takes them from path_shape:swipe's resampled path.
+local function ends(swiped)
+    local samples = swiped.samples
+    local last = #samples
+    return { x = samples[1], y = samples[2] },
+        { x = samples[last - 1], y = samples[last] }
+end
+
 it("finds a long word by the shape of its swipe", function()
     local points, centers = swipe("important")
     local found = words(channel():candidates{ signature = LONG,
@@ -71,10 +80,11 @@ it("only offers words whose ends and length fit the swipe", function()
         return math.sqrt((c.x - point.x) ^ 2 + (c.y - point.y) ^ 2)
             <= ch.REACH * c.size
     end
+    local first_point, last_point = ends(swiped)
     for index, item in ipairs(found) do
         local signature = item.entry.gesture_signature
-        T.truthy(near(signature:sub(1, 1), points[1]), signature)
-        T.truthy(near(signature:sub(-1), points[#points]), signature)
+        T.truthy(near(signature:sub(1, 1), first_point), signature)
+        T.truthy(near(signature:sub(-1), last_point), signature)
         local ratio = swiped.length / shapes:ideal(signature, centers).length
         T.truthy(ratio >= ch.MIN_RATIO and ratio <= ch.MAX_RATIO, signature)
         if index > 1 then
@@ -98,4 +108,25 @@ it("finds a long word swiped flat", function()
     local found = words(channel():candidates{ signature = LONG,
         points = points, key_centers = centers })
     T.truthy(position(found, "important"), table.concat(found, ","))
+end)
+
+it("finds a long word past an untagged tail off the keyboard", function()
+    local points, centers = swipe("important")
+    -- Tag every point that landed on a letter key, as a real trace
+    -- does; trimTrace only needs the first and last tagged point, but
+    -- tagging them all matches a real trace's shape.
+    for index, point in ipairs(points) do
+        point.letter_index = index
+    end
+    -- Overshoot past the keyboard's edge before the finger lifts: no
+    -- letter there, so the trace collector leaves these untagged.
+    local last = points[#points]
+    for step = 1, 5 do
+        points[#points + 1] = { x = last.x + step * 60,
+            y = last.y + step * 60 }
+    end
+    local found = words(channel():candidates{ signature = LONG,
+        points = points, key_centers = centers })
+    local at = position(found, "important")
+    T.truthy(at and at <= 3, table.concat(found, ","))
 end)
