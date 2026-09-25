@@ -154,9 +154,11 @@ local ResizeFrame = loadModule("resize_frame"):new{
     screen = Screen,
     icon_dir = plugin_dir .. "/icons",
 }
+local ShapeChannel = loadModule("shape_channel"):new(DictionaryStore,
+    PathShape, PersonalDictionary, BlockedWords)
 local RecognitionEngine = loadModule("recognition_engine")
     :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary,
-        BlockedWords)
+        BlockedWords, ShapeChannel)
 
 -- Expose dictionary management to the plugin's permanent main-menu entry.
 -- Passing nil as the keyboard deliberately clears any stale keyboard

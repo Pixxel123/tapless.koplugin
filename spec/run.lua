@@ -30,6 +30,7 @@ local specs = {
     "path_shape_spec",
     "missing_letters_spec",
     "shape_channel_spec",
+    "shape_ranking_spec",
     "one_handed_spec",
     "icons_spec",
     "panel_button_spec",

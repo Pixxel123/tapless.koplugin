@@ -5,11 +5,13 @@
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
 --     [--context] [--context-settings FILE] [--usage]
 --     [--usage-settings FILE] [--per-session] [--no-learning] [--no-pairs]
---     [--misses] [--losses] [--keep-suspect] SESSION.jsonl...
+--     [--no-shape] [--misses] [--losses] [--keep-suspect] SESSION.jsonl...
 --
 -- The dictionary's word-pair table is used as on the device; --no-pairs
--- leaves it out. The ms column is the recognition engine's mean time per
--- swipe, first loads from disk included.
+-- leaves it out. --no-shape leaves out the shape channel, which looks for
+-- long words by the shape of the whole swipe. The ms column is the
+-- recognition engine's mean time per swipe, first loads from disk
+-- included.
 --
 -- --usage-settings and --context-settings read the counts from a KOReader
 -- settings file (settings.reader.lua). A session is recorded with learning
@@ -188,6 +190,16 @@ function Replay.loadPlugin(plugin_dir, options)
         path_shape_file:close()
         path_shape = load("path_shape"):new()
     end
+    -- The shape channel, unless options.no_shape; plugins from before
+    -- shape_channel.lua have none.
+    local shape_channel_file = not (options and options.no_shape)
+        and io.open(path("shape_channel"), "r")
+    local shape_channel
+    if shape_channel_file then
+        shape_channel_file:close()
+        shape_channel = load("shape_channel"):new(store, path_shape,
+            personal_dictionary)
+    end
     local plugin = {
         dir = plugin_dir,
         manifest = manifest,
@@ -198,7 +210,7 @@ function Replay.loadPlugin(plugin_dir, options)
         engine = load("recognition_engine"):new(store,
             load("scoring"):new(normalization),
             load("geometry_reranker"):new(path_shape),
-            personal_dictionary),
+            personal_dictionary, nil, shape_channel),
     }
     plugin.context_model, plugin.usage_model = newLearning()
     -- options.frozen keeps the counts as seeded: the device pauses learning
@@ -315,11 +327,13 @@ function Replay.numberKeyGestures(plugin, attempt)
 end
 
 -- Replays one recorded attempt. Returns { letters, words, personal,
--- bonus, uses, ms }; personal runs parallel to words, and bonus does too
--- when there is a word-pair table or plugin.context_model, uses when
--- plugin.usage_model exists (empty otherwise). ms is the time the
--- recognition engine took. On a signature too short to look up, short =
--- true and words, personal, bonus and uses come back empty.
+-- bonus, uses, ms, shape_triggered, shape_first }; personal runs parallel
+-- to words, and bonus does too when there is a word-pair table or
+-- plugin.context_model, uses when plugin.usage_model exists (empty
+-- otherwise). ms is the time the recognition engine took.
+-- shape_triggered: the shape channel ran; shape_first: the first word is
+-- one only it found. On a signature too short to look up, short = true
+-- and words, personal, bonus and uses come back empty.
 function Replay.run(plugin, attempt)
     local layout = buildLayout(attempt.keys)
     local info = plugin.manifest(attempt.dictionary or "en") or {}
@@ -452,8 +466,12 @@ function Replay.run(plugin, attempt)
             uses[index] = word_uses(candidate.word)
         end
     end
+    local last_shape = plugin.engine.last_shape
     return { letters = signature, words = words, personal = personal,
-        bonus = bonus, uses = uses, ms = ms }
+        bonus = bonus, uses = uses, ms = ms,
+        shape_triggered = last_shape and last_shape.triggered or false,
+        shape_first = last_shape and words[1] ~= nil
+            and last_shape.words[words[1]] or false }
 end
 
 -- "right" or "wrong" when the first suggestion is a word the user has
@@ -824,7 +842,7 @@ local function main(args)
     local personal_dir
     local use_context, context_settings = false, nil
     local use_usage, usage_settings, per_session = false, nil, false
-    local frozen, no_pairs = false, false
+    local frozen, no_pairs, no_shape = false, false, false
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -853,6 +871,8 @@ local function main(args)
             frozen = true
         elseif value == "--no-pairs" then
             no_pairs = true
+        elseif value == "--no-shape" then
+            no_shape = true
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -869,7 +889,8 @@ local function main(args)
             .. "[--compare DIR] [--personal DIR] [--context] "
             .. "[--context-settings FILE] [--usage] "
             .. "[--usage-settings FILE] [--per-session] [--no-learning] "
-            .. "[--no-pairs] [--misses] [--losses] [--keep-suspect] "
+            .. "[--no-pairs] [--no-shape] [--misses] [--losses] "
+            .. "[--keep-suspect] "
             .. "SESSION.jsonl...\n")
         os.exit(2)
     end
@@ -893,7 +914,8 @@ local function main(args)
         and dofile(usage_settings)[USAGE_SETTING_KEY]
     local options = { personal_dir = personal_dir, context = use_context,
         context_counts = context_counts, usage = use_usage,
-        usage_counts = usage_counts, frozen = frozen, no_pairs = no_pairs }
+        usage_counts = usage_counts, frozen = frozen, no_pairs = no_pairs,
+        no_shape = no_shape }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
     local replayed, device, short = {}, {}, 0
@@ -903,6 +925,7 @@ local function main(args)
     -- Whether any swipe had a word-pair bonus to give, learned or from the
     -- dictionary's table.
     local with_pairs = false
+    local shape_ran, shape_first = 0, 0
     local number_starts, number_left, number_gestures = 0, 0, {}
     local learned_right, learned_wrong = 0, 0
     local known_at_start, twice_at_start = Replay.usageSize(plugin)
@@ -942,6 +965,12 @@ local function main(args)
                 personal_first = personal_first + 1
             end
             with_pairs = with_pairs or result.bonus[1] ~= nil
+            if result.shape_triggered then
+                shape_ran = shape_ran + 1
+            end
+            if result.shape_first then
+                shape_first = shape_first + 1
+            end
             if result.bonus[1] and result.bonus[1] > 0
                     and (result.words[1] or ""):lower() ~= target then
                 context_first = context_first + 1
@@ -1050,6 +1079,10 @@ local function main(args)
             print(string.format("\nWords with a word-pair bonus put first "
                 .. "over the intended word: %d", context_first))
         end
+    end
+    if shape_ran > 0 then
+        print(string.format("\nShape channel: ran on %d swipes, put a word "
+            .. "only it found first on %d", shape_ran, shape_first))
     end
     if other then
         print("Times (ms) are this plugin's, and only rough: two plugins "

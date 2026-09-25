@@ -13,14 +13,19 @@ end
 local DYNAMIC_CANDIDATE_LIMIT = 40
 local GEOMETRY_CANDIDATE_LIMIT = 12
 
+-- shape_channel: optional; finds long words by the shape of the swipe.
 function RecognitionEngine:new(dictionary_store, scoring, geometry_reranker,
-        personal_dictionary, blocked_words)
+        personal_dictionary, blocked_words, shape_channel)
     return setmetatable({
         dictionary_store = assert(dictionary_store),
         scoring = assert(scoring),
         geometry_reranker = geometry_reranker,
         personal_dictionary = personal_dictionary,
         blocked_words = blocked_words,
+        shape_channel = shape_channel,
+        -- What the shape channel did on the last swipe: whether it ran,
+        -- the words only it found, and how each merged word was aligned.
+        last_shape = { triggered = false, words = {}, metadata = {} },
     }, self)
 end
 
@@ -146,6 +151,18 @@ function RecognitionEngine:pickCandidates(options)
         end
     end
     local results, final_seen = {}, {}
+    -- On a long swipe the shape channel adds words the letters missed; the
+    -- alignment may then leave out letters the path never crossed, and the
+    -- shape of the whole swipe counts for SHAPE_WEIGHT.
+    local shape_channel = self.shape_channel
+    local triggered = shape_channel ~= nil
+        and shape_channel:triggered(signature)
+    local missing_cost = triggered and self.scoring.MISSING_LETTER_COST
+        or nil
+    local result_limit = math.max(limit, GEOMETRY_CANDIDATE_LIMIT)
+    -- How each merged word was aligned, for tools that refit the weights.
+    -- (Results get no metadata: tools tell the shortlist by it.)
+    local merged = {}
     for _, candidate in ipairs(shortlist) do
         local metadata = candidate.metadata
         local entry = metadata and metadata.entry
@@ -160,18 +177,63 @@ function RecognitionEngine:pickCandidates(options)
                 metadata.context_bonus,
                 metadata.allow_start_mismatch,
                 metadata.allow_near and near or nil,
-                metadata.uses)
+                metadata.uses,
+                missing_cost)
             if spatial_score <= max_spatial then
+                merged[entry.word] = merged[entry.word] or metadata
                 self.scoring:addCandidate(results, final_seen, entry,
-                    spatial_score, ranked_score,
-                    math.max(limit, GEOMETRY_CANDIDATE_LIMIT))
+                    spatial_score, ranked_score, result_limit)
             end
         end
     end
+    local shape_words = {}
+    if triggered then
+        result_limit = result_limit + shape_channel.KEEP
+        for _, found in ipairs(shape_channel:candidates{
+                signature = signature,
+                points = trace_info and trace_info.points,
+                key_centers = key_centers,
+                dictionary = dictionary,
+                data_language = data_lang,
+                normalization_profile = options.normalization_profile,
+            }) do
+            local entry = found.entry
+            if not final_seen[entry.word] then
+                local context_bonus = options.context_bonus
+                    and options.context_bonus(
+                        trace_info and trace_info.previous_word, entry.word)
+                    or 0
+                local uses = options.word_uses
+                    and options.word_uses(entry.word) or 0
+                -- The channel chose the word by its ends, so either may be
+                -- a neighbouring key.
+                local spatial_score, ranked_score =
+                    self.scoring:scoreEntryDynamic(signature, entry,
+                        trace_chars, trace_info, key_centers, true,
+                        context_bonus, true, near, uses, missing_cost)
+                if spatial_score < 1000 then
+                    shape_words[entry.word] = true
+                    merged[entry.word] = {
+                        entry = entry,
+                        allow_endpoint_mismatch = true,
+                        allow_start_mismatch = true,
+                        allow_near = near ~= nil,
+                        context_bonus = context_bonus,
+                        uses = uses,
+                    }
+                    self.scoring:addCandidate(results, final_seen, entry,
+                        spatial_score, ranked_score, result_limit)
+                end
+            end
+        end
+    end
+    self.last_shape = { triggered = triggered, words = shape_words,
+        metadata = merged }
     if #results > 0 then
         if self.geometry_reranker then
             results = self.geometry_reranker:rerank(
-                results, trace_info, key_centers, #results)
+                results, trace_info, key_centers, #results,
+                triggered and shape_channel.SHAPE_WEIGHT or nil)
         end
         return self:fillRow(results, limit)
     end
