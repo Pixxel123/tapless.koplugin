@@ -95,3 +95,53 @@ it("describes a swipe's candidates by the features the ranking uses",
         plugin.engine.geometry_reranker)
     T.eq(FitWeights.topOne({ swipe }, start), 1)
 end)
+
+it("gives long swipes' merged candidates their missing letters", function()
+    local plugin = Replay.loadPlugin(T.plugin_dir)
+    local keys = CleanSwipes.defaultKeys()
+    local attempt = CleanSwipes.attempt("important", keys)
+    local swipe = FitWeights.shapeFeatures(plugin, attempt)
+    T.truthy(swipe, "the channel ran and important was a candidate")
+    T.eq(swipe.rows[swipe.target].word, "important")
+    T.eq(#swipe.rows[1].features, 6)
+    T.eq(swipe.rows[swipe.target].features[6], 0, "nothing missing")
+    -- The starting weights reproduce the engine's choice.
+    local start = FitWeights.shapeWeights(plugin.engine.scoring,
+        plugin.engine.shape_channel)
+    T.eq(FitWeights.topOne({ swipe }, start), 1)
+end)
+
+-- A stand-in for the scoring whose plain alignment scores plain, whose
+-- costed alignment leaves out costed_missing letters, and which records
+-- the missing cost of each call.
+local function stubScoring(plain, costed_missing)
+    local stub = { costs = {} }
+    function stub:dynamicMatchScore(_, _, _, _, _, _, _, _, _, cost)
+        self.costs[#self.costs + 1] = cost or false
+        if cost then
+            return 12, false, {}, costed_missing
+        end
+        return plain, false, {}
+    end
+    return stub
+end
+
+it("counts missing letters from the alignment the score used", function()
+    local metadata = { allow_near = false }
+    local function missing(scoring)
+        return FitWeights.missingLetters(scoring, "abcd", { "a", "d" }, {},
+            {}, metadata, nil, 2)
+    end
+    -- The plain alignment found a path: it is the one ranked, so nothing
+    -- is missing, whatever the costed one would have left out.
+    local found = stubScoring(5, 1)
+    T.eq(missing(found), 0)
+    T.eq(#found.costs, 1)
+    T.eq(found.costs[1], false)
+    -- It hit the wall: the costed alignment is ranked, and counts.
+    local walled = stubScoring(1080, 2)
+    T.eq(missing(walled), 2)
+    T.eq(walled.costs[2], 2)
+    -- A costed alignment that also fails leaves nothing counted.
+    T.eq(missing(stubScoring(1080, nil)), 0)
+end)

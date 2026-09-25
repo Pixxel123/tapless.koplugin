@@ -1,7 +1,7 @@
 -- Fits the weights that turn Tapless's per-word evidence into a ranking,
 -- from recorded swipe test sessions.
 --
--- luajit tools/fit_weights.lua [--plugin DIR] SESSION.jsonl...
+-- luajit tools/fit_weights.lua [--plugin DIR] [--shape] SESSION.jsonl...
 --
 -- A candidate's ranked score is a weighted sum of its features (spatial
 -- score, word frequency, rarity, repeated-letter credit, geometry score).
@@ -10,6 +10,11 @@
 -- share among the swipe's candidates. The weights that make the intended
 -- words most likely are found by Newton's method. Each session is held out
 -- in turn, so the reported accuracy is on swipes the fit did not see.
+--
+-- --shape fits the ranking of long swipes, the ones the shape channel
+-- runs on, instead: its shape weight and the cost of each letter the
+-- alignment left out take the places of the geometry weight and borrowed
+-- letters, and it prints SHAPE_WEIGHT and MISSING_LETTER_COST.
 local tools_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$")
     or "."
 package.path = tools_dir .. "/?.lua;" .. package.path
@@ -146,6 +151,140 @@ function FitWeights.candidateFeatures(plugin, attempt)
         or 0
     for _, row in ipairs(rows) do
         row.features[5] = row.features[5] or neutral
+    end
+    if not target_index or #rows < 2 then
+        return nil
+    end
+    return { rows = rows, target = target_index, word = target }
+end
+
+-- Starting weights for long swipes: as currentWeights, with the channel's
+-- shape weight and, in place of borrowed letters, missing letters at
+-- MISSING_LETTER_COST path units each.
+function FitWeights.shapeWeights(scoring, channel)
+    return {
+        scoring.SCORE_UNIT / 1000,
+        1,
+        scoring.RARE_SHORT_COST * scoring.SCORE_UNIT / 1000,
+        scoring.REPEAT_BONUS / 1000,
+        channel.SHAPE_WEIGHT / 1000,
+        scoring.MISSING_LETTER_COST * scoring.SCORE_UNIT / 1000,
+    }
+end
+
+-- How many of a candidate's letters its alignment left out, from the same
+-- alignment scoreEntryDynamic ranks it by: the plain one when that finds
+-- a path (then nothing is missing), else the one with missing_cost. Asking
+-- for the costed alignment straight away could leave out a letter the
+-- plain one matched, and the count would then not match the score.
+function FitWeights.missingLetters(scoring, candidate, trace_chars,
+        trace_info, key_centers, metadata, near, missing_cost)
+    local near_positions = metadata.allow_near and near or nil
+    local plain = scoring:dynamicMatchScore(candidate, trace_chars,
+        metadata.allow_endpoint_mismatch, trace_info.letter_points,
+        trace_info.endpoint_pos, key_centers, trace_info.observations,
+        metadata.allow_start_mismatch, near_positions)
+    if plain < 1000 or not missing_cost then
+        return 0
+    end
+    local _, _, _, missing = scoring:dynamicMatchScore(candidate,
+        trace_chars, metadata.allow_endpoint_mismatch,
+        trace_info.letter_points, trace_info.endpoint_pos, key_centers,
+        trace_info.observations, metadata.allow_start_mismatch,
+        near_positions, missing_cost)
+    return missing or 0
+end
+
+-- For a swipe the shape channel runs on: the merged results' features
+-- (spatial without missing letters, frequency, rarity, repeat credit,
+-- shape, letters missing), with the intended word's index; nil when the
+-- channel did not run or the intended word was not a candidate.
+function FitWeights.shapeFeatures(plugin, attempt)
+    local engine = plugin.engine
+    local scoring = engine.scoring
+    local reranker = engine.geometry_reranker
+    if not engine.shape_channel then
+        return nil
+    end
+    local options, merged
+    local original_pick = engine.pickCandidates
+    engine.pickCandidates = function(self, opts)
+        -- A call that ends without reranking must not leave an earlier
+        -- call's candidates behind with this call's options.
+        options, merged = opts, nil
+        return original_pick(self, opts)
+    end
+    reranker.rerank = function(self, results, ...)
+        merged = {}
+        for index, candidate in ipairs(results) do
+            merged[index] = candidate
+        end
+        return getmetatable(self).rerank(self, results, ...)
+    end
+    local ok, result = pcall(Replay.run, plugin, attempt)
+    engine.pickCandidates = nil
+    reranker.rerank = nil
+    if not ok then
+        error(result)
+    end
+    if result.short or not options or not merged
+            or not engine.last_shape.triggered then
+        return nil
+    end
+
+    local signature = options.signature
+    local trace_info = options.trace_info
+    local key_centers = options.key_centers
+    local trace_chars = scoring:buildNextPositions(signature)
+    local near = scoring:buildNearPositions(trace_chars, key_centers,
+        trace_info.observations)
+    local cost = scoring.MISSING_LETTER_COST
+    local target = attempt.target:lower()
+    local rows, target_index = {}, nil
+    local shape_total, shape_count = 0, 0
+    for _, candidate in ipairs(merged) do
+        local metadata = engine.last_shape.metadata[candidate.word]
+        local entry = metadata and metadata.entry
+        if entry then
+            local spatial, ranked = scoring:scoreEntryDynamic(signature,
+                entry, trace_chars, trace_info, key_centers,
+                metadata.allow_endpoint_mismatch, 0,
+                metadata.allow_start_mismatch,
+                metadata.allow_near and near or nil, 0, cost)
+            local candidate_signature = entry.gesture_signature
+                or entry.signature
+            local missing = FitWeights.missingLetters(scoring,
+                candidate_signature, trace_chars, trace_info, key_centers,
+                metadata, near, cost)
+            local freq = entry.freq or 0
+            local rare = #(entry.signature or entry.word)
+                    <= scoring.RARE_SHORT_LENGTH
+                and freq < scoring.RARE_SHORT_FREQ and 1 or 0
+            local repeat_credit = (spatial * scoring.SCORE_UNIT - freq
+                + rare * scoring.RARE_SHORT_COST * scoring.SCORE_UNIT
+                - ranked) / scoring.REPEAT_BONUS
+            local shape = reranker:score(trace_info.points,
+                candidate_signature, key_centers)
+            if shape then
+                shape_total = shape_total + shape
+                shape_count = shape_count + 1
+            end
+            rows[#rows + 1] = {
+                word = entry.word,
+                features = { spatial - missing * cost, -freq / 1000, rare,
+                    -repeat_credit, shape or false, missing },
+            }
+            if entry.word:lower() == target then
+                target_index = #rows
+            end
+        end
+    end
+    -- As the reranker does: a word with no shape score gets the mean, and
+    -- with fewer than two scores the shape adds nothing to any word.
+    local neutral = shape_count > 0 and shape_total / shape_count or 0
+    for _, row in ipairs(rows) do
+        row.features[5] = shape_count >= 2
+            and (row.features[5] or neutral) or 0
     end
     if not target_index or #rows < 2 then
         return nil
@@ -384,11 +523,14 @@ end
 local function main(args)
     local plugin_dir = tools_dir .. "/../tapless.koplugin"
     local paths = {}
+    local shape = false
     local index = 1
     while index <= #args do
         if args[index] == "--plugin" then
             index = index + 1
             plugin_dir = args[index]
+        elseif args[index] == "--shape" then
+            shape = true
         else
             paths[#paths + 1] = args[index]
         end
@@ -396,14 +538,23 @@ local function main(args)
     end
     if #paths < 2 then
         io.stderr:write("usage: luajit tools/fit_weights.lua [--plugin DIR]"
-            .. " SESSION.jsonl SESSION.jsonl...\n"
+            .. " [--shape] SESSION.jsonl SESSION.jsonl...\n"
             .. "(at least two sessions: each is held out in turn)\n")
         os.exit(2)
     end
     local json = require("dkjson")
     local plugin = Replay.loadPlugin(plugin_dir)
-    local start = FitWeights.currentWeights(plugin.engine.scoring,
-        plugin.engine.geometry_reranker)
+    if shape and not plugin.engine.shape_channel then
+        io.stderr:write("--shape: this plugin has no shape channel\n")
+        os.exit(2)
+    end
+    local features = shape and FitWeights.shapeFeatures
+        or FitWeights.candidateFeatures
+    local start = shape
+        and FitWeights.shapeWeights(plugin.engine.scoring,
+            plugin.engine.shape_channel)
+        or FitWeights.currentWeights(plugin.engine.scoring,
+            plugin.engine.geometry_reranker)
 
     local sessions, all, skipped, total = {}, {}, 0, 0
     local left_out = {}
@@ -415,7 +566,7 @@ local function main(args)
         end
         for _, record in ipairs(attempts) do
             total = total + 1
-            local swipe = FitWeights.candidateFeatures(plugin, record)
+            local swipe = features(plugin, record)
             if swipe then
                 table.insert(sessions[session_index], swipe)
                 table.insert(all, swipe)
@@ -432,7 +583,10 @@ local function main(args)
         .. "word among the candidates)", total, #all, skipped))
 
     local short_start = { unpack(start, 1, 5) }
-    print("\nHeld-out session     n  current  -borrow  fitted")
+    -- The middle column fits without feature 6: borrowed letters, or on
+    -- long swipes missing ones.
+    print("\nHeld-out session     n  current  "
+        .. (shape and "-missing" or "-borrow") .. "  fitted")
     local held_current, held_no_borrow, held_fitted, held_n = 0, 0, 0, 0
     for held, test in ipairs(sessions) do
         local train = {}
@@ -462,6 +616,19 @@ local function main(args)
         held_n, held_current, held_no_borrow, held_fitted))
 
     local weights = FitWeights.fit(all, start)
+    if shape then
+        print("\nWeights fitted on every session (frequency held at 1):")
+        print(string.format("  SHAPE_WEIGHT        %8.0f (now %d)",
+            weights[5] / weights[2] * 1000,
+            plugin.engine.shape_channel.SHAPE_WEIGHT))
+        print(string.format("  MISSING_LETTER_COST %8.2f (now %.2f; in "
+            .. "skipped-letter units)", weights[6] / weights[1],
+            plugin.engine.scoring.MISSING_LETTER_COST))
+        print(string.format("  negative log-likelihood %.1f (current "
+            .. "weights %.1f)", FitWeights.loss(all, weights, 0),
+            FitWeights.loss(all, start, 0)))
+        return
+    end
     local se = FitWeights.standardErrors(all, weights)
     print("\nWeights fitted on every session (frequency held at 1;"
         .. " ± is 1.96 SE, holding the named weight fixed at its"

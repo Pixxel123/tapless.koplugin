@@ -5,11 +5,17 @@
 -- luajit tools/replay.lua [--plugin DIR] [--compare DIR] [--personal DIR]
 --     [--context] [--context-settings FILE] [--usage]
 --     [--usage-settings FILE] [--per-session] [--no-learning] [--no-pairs]
---     [--no-shape] [--misses] [--losses] [--keep-suspect] SESSION.jsonl...
+--     [--no-shape] [--min-length N] [--shape-trigger N] [--shape-weight N]
+--     [--missing-cost N] [--misses] [--losses] [--keep-suspect]
+--     SESSION.jsonl...
 --
 -- The dictionary's word-pair table is used as on the device; --no-pairs
 -- leaves it out. --no-shape leaves out the shape channel, which looks for
--- long words by the shape of the whole swipe. The ms column is the
+-- long words by the shape of the whole swipe. For experiments with it,
+-- --min-length replays only swipes meant as words of N letters or more,
+-- and --shape-trigger, --shape-weight and --missing-cost set the
+-- channel's TRIGGER_LETTERS and SHAPE_WEIGHT and the scoring's
+-- MISSING_LETTER_COST, in the plugin under test only. The ms column is the
 -- recognition engine's mean time per swipe, first loads from disk
 -- included.
 --
@@ -843,6 +849,7 @@ local function main(args)
     local use_context, context_settings = false, nil
     local use_usage, usage_settings, per_session = false, nil, false
     local frozen, no_pairs, no_shape = false, false, false
+    local min_length, shape_overrides, missing_cost = 0, {}, nil
     local index = 1
     while index <= #args do
         local value = args[index]
@@ -873,6 +880,18 @@ local function main(args)
             no_pairs = true
         elseif value == "--no-shape" then
             no_shape = true
+        elseif value == "--min-length" then
+            index = index + 1
+            min_length = tonumber(args[index])
+        elseif value == "--shape-trigger" then
+            index = index + 1
+            shape_overrides.TRIGGER_LETTERS = tonumber(args[index])
+        elseif value == "--shape-weight" then
+            index = index + 1
+            shape_overrides.SHAPE_WEIGHT = tonumber(args[index])
+        elseif value == "--missing-cost" then
+            index = index + 1
+            missing_cost = tonumber(args[index])
         elseif value == "--misses" then
             show_misses = true
         elseif value == "--losses" then
@@ -889,8 +908,9 @@ local function main(args)
             .. "[--compare DIR] [--personal DIR] [--context] "
             .. "[--context-settings FILE] [--usage] "
             .. "[--usage-settings FILE] [--per-session] [--no-learning] "
-            .. "[--no-pairs] [--no-shape] [--misses] [--losses] "
-            .. "[--keep-suspect] "
+            .. "[--no-pairs] [--no-shape] [--min-length N] "
+            .. "[--shape-trigger N] [--shape-weight N] [--missing-cost N] "
+            .. "[--misses] [--losses] [--keep-suspect] "
             .. "SESSION.jsonl...\n")
         os.exit(2)
     end
@@ -908,6 +928,15 @@ local function main(args)
     if left_out_line then
         print(left_out_line)
     end
+    if min_length > 0 then
+        local kept = {}
+        for _, attempt in ipairs(attempts) do
+            if #(attempt.target or "") >= min_length then
+                kept[#kept + 1] = attempt
+            end
+        end
+        attempts = kept
+    end
     local context_counts = context_settings
         and dofile(context_settings)[CONTEXT_SETTING_KEY]
     local usage_counts = usage_settings
@@ -918,6 +947,16 @@ local function main(args)
         no_shape = no_shape }
     local plugin = Replay.loadPlugin(plugin_dir, options)
     local other = compare_dir and Replay.loadPlugin(compare_dir, options)
+    -- Only the plugin under test: --compare keeps its own constants.
+    local channel = plugin.engine.shape_channel
+    if channel then
+        for name, value in pairs(shape_overrides) do
+            channel[name] = value
+        end
+    end
+    if missing_cost then
+        plugin.engine.scoring.MISSING_LETTER_COST = missing_cost
+    end
     local replayed, device, short = {}, {}, 0
     local changes = { fixed = {}, broke = {} }
     local personal_first, personal_first_before = 0, 0
