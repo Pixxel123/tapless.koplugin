@@ -8,6 +8,7 @@ local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
+local OverlapGroup = require("ui/widget/overlapgroup")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -146,6 +147,19 @@ local SidePanel = loadModule("side_panel"):new{
     vertical_span = VerticalSpan,
     icon_dir = plugin_dir .. "/icons",
 }
+local ResizeFrame = loadModule("resize_frame"):new{
+    ui_manager = UIManager,
+    input_container = InputContainer,
+    overlap_group = OverlapGroup,
+    vertical_group = VerticalGroup,
+    vertical_span = VerticalSpan,
+    horizontal_span = HorizontalSpan,
+    gesture_range = GestureRange,
+    blitbuffer = Blitbuffer,
+    panel_button = PanelButton,
+    screen = Screen,
+    icon_dir = plugin_dir .. "/icons",
+}
 local RecognitionEngine = loadModule("recognition_engine")
     :new(DictionaryStore, Scoring, GeometryReranker, PersonalDictionary,
         BlockedWords)
@@ -171,6 +185,8 @@ return loadModule("koreader_adapter"):new{
     key_adapter = KeyAdapter,
     one_handed = OneHanded:new(G_reader_settings),
     side_panel = SidePanel,
+    resize_frame = ResizeFrame,
+    overlap_group = OverlapGroup,
     virtual_key = VirtualKey,
     ui_manager = UIManager,
     settings = G_reader_settings,

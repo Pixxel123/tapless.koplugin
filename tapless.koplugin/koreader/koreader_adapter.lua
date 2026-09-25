@@ -187,9 +187,14 @@ function KoreaderAdapter:install(VirtualKeyboard)
                 content,
             },
         }
+        local bottom_child = keyboard_frame
+        if resize then
+            bottom_child = self:_swypeResizeLayer(keyboard_frame, area,
+                inset, inner_w, inner_h)
+        end
         self[1] = adapter.bottom_container:new{
             dimen = adapter.screen:getSize(),
-            keyboard_frame,
+            bottom_child,
         }
         keyboard_frame.dimen = keyboard_frame:getSize()
         self.dimen = keyboard_frame.dimen
@@ -343,6 +348,137 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self:_refresh(true)
     end
 
+    -- The faded keys and panel take no gestures while resizing; the frame
+    -- over them takes the drags.
+    function VirtualKeyboard:_swypeResizeLayer(keyboard_frame, area, inset,
+            inner_w, inner_h)
+        local keyboard = self
+        for _, row in ipairs(self.layout) do
+            for _, key in ipairs(row) do
+                key.ges_events = {}
+            end
+        end
+        for _, button in ipairs(self.swype_mvp_panel_buttons or {}) do
+            button.ges_events = {}
+        end
+        local frame = adapter.resize_frame:create(self, {
+            width = self.width,
+            height = self.height,
+            keys = { x = inset + area.before, y = inset,
+                w = area.keys_w, h = inner_h },
+            fade = { x = inset, y = inset, w = inner_w, h = inner_h },
+            on_reset = function() keyboard:_swypeResetResize() end,
+            on_done = function() keyboard:_swypeFinishResize() end,
+        })
+        return adapter.overlap_group:new{
+            allow_mirroring = false,
+            keyboard_frame,
+            frame,
+        }
+    end
+
+    function VirtualKeyboard:_swypeResizeDrag()
+        local screen = self:_swypeScreen()
+        local one_handed = adapter.one_handed
+        return function(start, grip, dx, dy)
+            return one_handed.drag(start, grip, one_handed.toMM(dx, screen),
+                one_handed.toMM(dy, screen), screen)
+        end
+    end
+
+    -- Rebuilds the faded keys at the draft. A shorter keyboard uncovers
+    -- part of the dialog, so everything over the taller height repaints.
+    function VirtualKeyboard:_swypeRedrawResize()
+        if not self.swype_mvp_resize then
+            return
+        end
+        local old_height = self.height
+        self:addKeys()
+        local tallest = math.max(old_height, self.height)
+        adapter.ui_manager:setDirty("all", "ui", adapter.geometry:new{
+            x = 0,
+            y = adapter.screen:getHeight() - tallest,
+            w = self.width,
+            h = tallest,
+        })
+    end
+
+    function VirtualKeyboard:_swypeResizePan(ges)
+        local resize = self.swype_mvp_resize
+        if not resize or not ges then
+            return false
+        end
+        if not resize.drag and not adapter.resize_frame:begin(resize,
+                ges.start_pos or ges.pos) then
+            return false
+        end
+        if adapter.resize_frame:track(resize, ges.pos,
+                self:_swypeResizeDrag()) then
+            local keyboard = self
+            adapter.resize_frame:queueRedraw(resize, function()
+                keyboard:_swypeRedrawResize()
+            end)
+        end
+        return true
+    end
+
+    function VirtualKeyboard:_swypeResizeRelease(ges)
+        local resize = self.swype_mvp_resize
+        if not resize or not ges then
+            return false
+        end
+        if not resize.drag then
+            -- A quick flick arrives as one swipe, from where it started.
+            if ges.ges ~= "swipe"
+                    or not adapter.resize_frame:begin(resize, ges.pos) then
+                return false
+            end
+        end
+        adapter.resize_frame:finish(resize, ges.end_pos or ges.pos,
+            self:_swypeResizeDrag())
+        adapter.resize_frame:cancelRedraw(resize)
+        self:_swypeRedrawResize()
+        return true
+    end
+
+    function VirtualKeyboard:_swypeResetResize()
+        local resize = self.swype_mvp_resize
+        if not resize then
+            return
+        end
+        adapter.resize_frame:cancelRedraw(resize)
+        local screen = self:_swypeScreen()
+        resize.draft = adapter.one_handed.reset(resize.draft, screen,
+            adapter.one_handed.toMM(self:_swypeNormalHeight(), screen))
+        self:_swypeRedrawResize()
+    end
+
+    function VirtualKeyboard:_swypeFinishResize()
+        local resize = self.swype_mvp_resize
+        if not resize then
+            return
+        end
+        adapter.resize_frame:cancelRedraw(resize)
+        self.swype_mvp_resize = nil
+        local screen = self:_swypeScreen()
+        local normal = adapter.one_handed.toMM(self:_swypeNormalHeight(),
+            screen)
+        local draft = resize.draft
+        adapter.one_handed:update(screen, function(state)
+            state.enabled = true
+            state.left = draft.left
+            state.width = draft.width
+            -- Left at the normal height, the keys follow Tapless's
+            -- Keyboard size setting.
+            state.height = math.abs(draft.height - normal) >= 0.5
+                and draft.height or nil
+        end)
+        -- Only the keys were redrawn while resizing: measure any height
+        -- change from before it began.
+        self.height = resize.start_height
+        self:_swypeRebuild()
+    end
+
     function VirtualKeyboard:_swypeScheduleWarmUp(delay)
         adapter.dictionary_controller:scheduleWarmUp(self, delay)
     end
@@ -360,6 +496,10 @@ function KoreaderAdapter:install(VirtualKeyboard)
         self.swype_mvp_pending_space = nil
         self.swype_mvp_tapped_word = nil
         self.swype_mvp_switch_on_lift = nil
+        if self.swype_mvp_resize then
+            adapter.resize_frame:cancelRedraw(self.swype_mvp_resize)
+            self.swype_mvp_resize = nil
+        end
         self:_swypeReset()
         adapter.dictionary_controller:stopWarmUp(self)
         self:_swypeCancelBucketPrefetch()
@@ -372,6 +512,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
     function VirtualKeyboard:isSwypeMvpEnabled()
         return adapter.settings:nilOrTrue("keyboard_swype_mvp_enabled")
             and not self.symbolmode and not self.umlautmode
+            and not self.swype_mvp_resize
     end
 
     function VirtualKeyboard:_swypeKeyAt(pos)
