@@ -236,6 +236,7 @@ function KoreaderAdapter:install(VirtualKeyboard)
         local function closePopup()
             if handle.popup then
                 adapter.ui_manager:close(handle.popup)
+                handle.popup = nil
             end
         end
         local function leave()
